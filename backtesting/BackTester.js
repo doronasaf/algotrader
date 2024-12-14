@@ -71,7 +71,16 @@ class MarketDataReader {
 const fetchMarketDataFromBackTester = async (symbol) => {
     const dataFilePath = path.join(__dirname, datasetURL);
     const marketDataReader = new MarketDataReader(dataFilePath);
-    return await marketDataReader.fetchMarketData();
+    let data = await marketDataReader.fetchMarketData();
+    const marketData = data.reduce((acc, item) => {
+        // Add each value to the corresponding array in the accumulator
+        acc.volumes.push(item.volume);
+        acc.highs.push(item.high);
+        acc.lows.push(item.low);
+        acc.closes.push(item.close);
+        return acc;
+    }, { volumes: [], highs: [], lows: [], closes: [] }); // Initialize with empty arrays
+    return marketData;
 }
 // // Example usage
 // (async () => {
@@ -86,3 +95,6 @@ const fetchMarketDataFromBackTester = async (symbol) => {
 // })();
 
 // 2015-02-03 09:15:00
+module.exports = {
+    fetchMarketDataFromBackTester,
+}
