@@ -3,7 +3,7 @@ const {OversoldWithUpwardMomentumStrategy} = require("./OversoldWithUpwardMoment
 const {CombinedMomentumStrategy} = require("./CombinedMomentumStrategy");
 const {CombinedMomentumWithWeightsStrategy} = require("./CombinedMomentumWithWeightsStrategy");
 const {KeltnerChannelsStrategy} = require("./KeltnerChannelsStrategy");
-// const {DynamicWeightedStrategy} = require("./DynamicWeightStrategy");
+const {TrendMomentumBreakoutStrategy} = require("./TrendMomentumBreakoutStrategy");
 
 const TradingStrategy = {
     CombinedWithWeightMomentum : "CombinedMomentumWithWeightsStrategy",
@@ -11,7 +11,7 @@ const TradingStrategy = {
     BullishMomentum : "BullishMomentumStrategy",
     OversoldWithUpwardMomentum : "OversoldWithUpwardMomentumStrategy",
     KeltnerChannelsStrategy: "KeltnerChannelsStrategy",
-    // DynamicWeightedStrategy : "dynamicWeightedStrategy"
+    TrendMomentumBreakoutStrategy: "TrendMomentumBreakoutStrategy",
 };
 
 
@@ -28,8 +28,8 @@ class MarketAnalyzerFactory {
                 return new CombinedMomentumWithWeightsStrategy(symbol, marketData, support, resistance, params);
             case TradingStrategy.KeltnerChannelsStrategy:
                 return new KeltnerChannelsStrategy(symbol, marketData, support, resistance, params);
-            // case TradingStrategy.DynamicWeightedStrategy:
-            //     return new DynamicWeightedStrategy(symbol, marketData, support, resistance);
+            case TradingStrategy.TrendMomentumBreakoutStrategy:
+                 return new TrendMomentumBreakoutStrategy(symbol, marketData, support, resistance, params);
             default:
                 throw new Error(`Unknown analyzer type: ${tradingStrategy}`);
         }

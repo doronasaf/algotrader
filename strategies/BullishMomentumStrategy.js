@@ -29,7 +29,8 @@ class BullishMomentumStrategy extends IMarketAnalyzer {
         this.rsiPeriod= 12;
         this.macdFastEMA= 6;
         this.macdSlowEMA= 14;
-        this.macdSignalEMA= 3
+        this.macdSignalEMA= 3;
+        this.margins = {};
     }
 
     setSupportResistance(support, resistance) {
@@ -50,7 +51,7 @@ class BullishMomentumStrategy extends IMarketAnalyzer {
             // Check for entry signals
             if (close > this.resistance * this.breakoutThreshold &&
                 rsiValue > this.rsiBullishBreakoutMin && rsiValue < this.rsiBullishBreakoutMax) {
-                const margins = this.calculateMargins();
+                this.margins = this.calculateMargins();
                 logger.info(`
                   Ticker: ${this.symbol}
                   Strategy: BullishMomentumStrategy
@@ -132,6 +133,10 @@ class BullishMomentumStrategy extends IMarketAnalyzer {
             logger.error(`Ticker: ${this.symbol} | BullishMomentumStrategy Error evaluating accumulation: ${error}`);
         }
         return accumulationCompleted;
+    }
+
+    getMargins() {
+        return this.margins;
     }
 }
 

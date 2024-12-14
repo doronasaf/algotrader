@@ -32,6 +32,10 @@ class IMarketAnalyzer {
         return {shares, takeProfit, stopLoss, close};
     }
 
+    getMargins() {
+        throw new Error('Method evaluateAccumulation must be implemented.');
+    }
+
     toString() {
         return this.constructor.name;
     }

@@ -77,8 +77,11 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                 case "B": // Breakout
                     const analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance);
                     const breakoutConfirmed = await analyzer.evaluateBreakout();
-
                     if (breakoutConfirmed === 1) { // buy
+                        const margins = analyzer.getMargins();
+                        const newShares = Math.floor(margins.shares);
+                        const newTakeProfit = margins.takeProfit;
+                        const newStopLoss = margins.stopLoss;
                         const shares = Math.floor(capital / close);
                         position += shares;
                         capital -= shares * close;
@@ -86,6 +89,10 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         const takeProfit = Math.floor(close * params.takeProfit * 100) / 100;
                         const stopLoss = Math.floor(close * params.stopLoss * 100) / 100;
                         close = Math.floor(close * 100) / 100;
+
+                        if (shares !== newShares && takeProfit !== newTakeProfit && stopLoss !== newStopLoss) {
+                            appLog.info(`Ticker ${ticker} | Updated Margins: Shares = ${newShares}, TP = ${newTakeProfit}, SL = ${newStopLoss}`);
+                        }
 
                         const orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
                         orderResult.strategy = analyzer.toString();

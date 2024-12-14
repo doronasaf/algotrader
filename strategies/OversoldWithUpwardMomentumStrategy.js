@@ -18,7 +18,8 @@ class OversoldWithUpwardMomentumStrategy extends IMarketAnalyzer {
         this.rsiPeriod= 9;
         this.macdFastEMA= 5;
         this.macdSlowEMA= 13;
-        this.macdSignalEMA= 3
+        this.macdSignalEMA= 3;
+        this.margins = {};
     }
 
     setSupportResistance(support, resistance) {
@@ -35,7 +36,7 @@ class OversoldWithUpwardMomentumStrategy extends IMarketAnalyzer {
             const oversoldThreshold = 30;
             // Check for entry signals
             if (rsiValue < oversoldThreshold && macdValue.histogram > 0) {
-                const margins = this.calculateMargins();
+                this.margins = this.calculateMargins();
                 logger.info(`
                   Ticker: ${this.symbol}
                   Strategy: OversoldWithUpwardMomentumStrategy
@@ -104,6 +105,10 @@ class OversoldWithUpwardMomentumStrategy extends IMarketAnalyzer {
             logger.error("Error:", error);
         }
         return accumulationCompleted;
+    }
+
+    getMargins() {
+        return this.margins;
     }
 }
 

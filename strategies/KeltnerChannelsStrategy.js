@@ -22,6 +22,7 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
         this.rsiPeriod = 14;
         this.lowRsiAccThreshold = 40;
         this.highRsiAccThreshold = 60;
+        this.highRsiBuyThreshold = 60;
         // accumulation parameters
         this.macdFastAcc = 12;
         this.macdSlowAcc = 26;
@@ -30,6 +31,8 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
         // Accumulation Thresholds
         this.volatilityThreshold = 0.005; // Small price range
         this.lowVolumeMultiplier = 0.5; // Volume < 50% of average
+
+        this.margins = {};
     }
 
     /**
@@ -108,9 +111,9 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
             const lastHistogram = macdData.histogram || 0;
 
             // Bullish Breakout: Price consistently near or above the upper band
-            if (lastClose > lastUpper && rsi > 50 && lastHistogram > 0) {
+            if (lastClose > lastUpper && rsi > this.highRsiBuyThreshold && lastHistogram > 0) {
                 // write the log like that
-                const margins = this.calculateMargins();
+                this.margins = this.calculateMargins();
                 logger.info(`
                     Ticker: ${this.symbol}
                     Strategy: KeltnerChannelsStrategy
@@ -118,7 +121,7 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
                     Shares: ${margins.shares},
                     Limit: ${close},
                     Stop Loss: ${margins.stopLoss},
-                  Take Profit: ${margins.takeProfit}
+                    Take Profit: ${margins.takeProfit}
                     Statistics:
                       - Close Price: ${lastClose}
                       - RSI: ${rsi}
@@ -217,6 +220,10 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
             console.error(`Error in KeltnerChannelsStrategy: ${error.message}`);
         }
         return false;
+    }
+
+    getMargins() {
+        return this.margins;
     }
 }
 

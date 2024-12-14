@@ -13,6 +13,7 @@ class CombinedMomentumStrategy extends IMarketAnalyzer {
         this.dynamicVolumeThreshold = 1.3;
         this.breakoutThreshold = 1.004; // 0.4% above resistance
         this.narrowRangeThreshold = 1.5; // Pric
+        this.margins = {}
     }
 
     setSupportResistance(support, resistance) {
@@ -137,7 +138,7 @@ class CombinedMomentumStrategy extends IMarketAnalyzer {
                 lastMACD.histogram > 0;
 
             if (breakoutCondition) {
-                const margins = this.calculateMargins();
+                this.margins = this.calculateMargins();
                 logger.info(`
                   Ticker: ${this.symbol}
                   Strategy: CombinedMomentumStrategy
@@ -172,6 +173,10 @@ class CombinedMomentumStrategy extends IMarketAnalyzer {
             buySignal = -1;
         }
         return buySignal;
+    }
+
+    getMargins() {
+        return this.margins;
     }
 }
 
