@@ -65,7 +65,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         if (high > resistance) resistance = high;
                         if (low < support) support = low;
 
-                        const analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance);
+                        const analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance, params);
                         const accumulationAchieved = await analyzer.evaluateAccumulation();
                         if (accumulationAchieved) {
                             phase = "B";
@@ -75,7 +75,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                     break;
 
                 case "B": // Breakout
-                    const analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance);
+                    const analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance, params);
                     const breakoutConfirmed = await analyzer.evaluateBreakout();
                     if (breakoutConfirmed === 1) { // buy
                         const margins = analyzer.getMargins();
@@ -333,11 +333,13 @@ function tryRunWorker (stockCandidate, strategyType) {
 /**
  * Engine Logic
  */
+
 const engine = async () => {
     try {
         while (running) {
             if (workers.size === 0) {
                 let stockCandidates = await selectStocks(10); // Fetch max 10 stocks
+                // let stockCandidates=[];//zzzzzzzz
                 for (let i = 0; i < stockCandidates.length; i++) {
                     const stockCandidate = stockCandidates[i];
                     let strategyType = strategyTypes[i % strategyTypes.length];
