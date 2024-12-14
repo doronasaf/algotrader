@@ -56,7 +56,7 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
         if (this.rvol > this.rvolThreshold) {
             return 1; // Strong market participation (Bullish)
-        } else if (rvol < 1) {
+        } else if (this.rvol < 1) {
             return -1; // Weak market participation (Bearish)
         }
         return 0; // Neutral
@@ -93,13 +93,52 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     }
 
     calculateSupertrend(highs, lows, closes) {
-        return Supertrend.calculate({
-            high: highs,
-            low: lows,
-            close: closes,
-            period: this.atrPeriod,
-            multiplier: this.supertrendMultiplier,
-        });
+        // Calculate ATR
+        const atrValues = ATR.calculate({ high: highs, low: lows, close: closes, period: this.atrPeriod });
+
+        const supertrend = [];
+        let previousUpperBand = null;
+        let previousLowerBand = null;
+        let previousSupertrend = null;
+
+        for (let i = 0; i < closes.length; i++) {
+            if (i < this.atrPeriod - 1) {
+                // Not enough data to calculate ATR
+                supertrend.push(null);
+                continue;
+            }
+
+            const atr = atrValues[i - this.atrPeriod + 1];
+            const basicUpperBand = (highs[i] + lows[i]) / 2 + this.supertrendMultiplier * atr;
+            const basicLowerBand = (highs[i] + lows[i]) / 2 - this.supertrendMultiplier * atr;
+
+            const upperBand = previousUpperBand && closes[i] > previousUpperBand
+                ? Math.max(basicUpperBand, previousUpperBand)
+                : basicUpperBand;
+
+            const lowerBand = previousLowerBand && closes[i] < previousLowerBand
+                ? Math.min(basicLowerBand, previousLowerBand)
+                : basicLowerBand;
+
+            let trend;
+            if (previousSupertrend === "bullish") {
+                trend = closes[i] > lowerBand ? "bullish" : "bearish";
+            } else {
+                trend = closes[i] < upperBand ? "bearish" : "bullish";
+            }
+
+            supertrend.push({
+                trend,
+                upperBand,
+                lowerBand,
+            });
+
+            previousUpperBand = upperBand;
+            previousLowerBand = lowerBand;
+            previousSupertrend = trend;
+        }
+
+        return supertrend;
     }
 
     calculateKeltnerChannels(highs, lows, closes) {
@@ -202,14 +241,14 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const lastEMALong = emaLong[emaLong.length - 1];
 
         // Determine trading signals
-        const isBullish = cmf > 0 && lastEMAShort > lastEMALong && lastRSI > this.highRsiBulishThreshold;
-        const isBearish = cmf < 0 && lastEMAShort < lastEMALong && lastRSI < this.lowRsiBearishThreshold;
+        const isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && lastRSI > this.highRsiBulishThreshold;
+        const isBearish = this.cmf < 0 && lastEMAShort < lastEMALong && lastRSI < this.lowRsiBearishThreshold;
 
         if (isBullish) {
-            appLogger.info(`Bullish Signal: CMF = ${cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${lastRSI}`);
+            appLogger.info(`Bullish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
             return 1; // Buy
         } else if (isBearish) {
-            appLogger.info(`Bearish Signal: CMF = ${cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${lastRSI}`);
+            appLogger.info(`Bearish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
             return -1; // Sell
         }
 
@@ -393,7 +432,7 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                         * Score: ${cmfSignal}
                 `);
             return 1; // Buy Signal
-        } else if (sellSignals > buySignals) {
+        } else  {
             return 0; // Hold
         }
         // sell signal is never returned because we are only measuring a buy signals
