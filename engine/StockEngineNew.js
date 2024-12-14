@@ -78,7 +78,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                     const analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance);
                     const breakoutConfirmed = await analyzer.evaluateBreakout();
 
-                    if (breakoutConfirmed === 1) {
+                    if (breakoutConfirmed === 1) { // buy
                         const shares = Math.floor(capital / close);
                         position += shares;
                         capital -= shares * close;
@@ -120,7 +120,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                 transactionLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
                                 phase = "C";
                             } else if (order.type === "bracket") {
-                                if (order.parentOrder.status === "filled" && order.takeProfitOrder.status === "filled" && order.stopLossOrder.status === "filled") {
+                                if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
                                     timeoutInterval = regularInterval;
                                     phase = "C";
                                     transactionLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);

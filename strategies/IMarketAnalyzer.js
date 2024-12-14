@@ -1,5 +1,5 @@
 class IMarketAnalyzer {
-    constructor(symbol, marketData, support, resistance) {
+    constructor(symbol, marketData, support, resistance, params) {
         if (new.target === IMarketAnalyzer) {
             throw new Error('Cannot instantiate abstract class MarketAnalyzer directly.');
         }
@@ -7,6 +7,7 @@ class IMarketAnalyzer {
         this.marketData = marketData;
         this.support = support;
         this.resistance = resistance;
+        this.params = params;
     }
 
     setSupportResistance(support, resistance) {
@@ -19,6 +20,16 @@ class IMarketAnalyzer {
 
     async evaluateAccumulation() {
         throw new Error('Method evaluateAccumulation must be implemented.');
+    }
+
+    calculateMargins() {
+        let close = this.marketData.closes[this.marketData.closes.length - 1];
+        const shares = Math.floor(params.capital / close);
+
+        const takeProfit = Math.floor(close * params.takeProfit * 100) / 100;
+        const stopLoss = Math.floor(close * params.stopLoss * 100) / 100;
+        close = Math.floor(close * 100) / 100;
+        return {shares, takeProfit, stopLoss, close};
     }
 
     toString() {

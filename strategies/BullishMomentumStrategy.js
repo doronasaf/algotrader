@@ -11,8 +11,8 @@ const logger = getEntityLogger('analytics');
 // If both conditions are met, a buy signal is generated.
 
 class BullishMomentumStrategy extends IMarketAnalyzer {
-    constructor(symbol, marketData, support, resistance) {
-        super(symbol, marketData, support, resistance);
+    constructor(symbol, marketData, support, resistance, params) {
+        super(symbol, marketData, support, resistance, params);
         // this.symbol = symbol;
         // this.marketData = marketData;
         // this.support = support;
@@ -50,10 +50,15 @@ class BullishMomentumStrategy extends IMarketAnalyzer {
             // Check for entry signals
             if (close > this.resistance * this.breakoutThreshold &&
                 rsiValue > this.rsiBullishBreakoutMin && rsiValue < this.rsiBullishBreakoutMax) {
+                const margins = this.calculateMargins();
                 logger.info(`
                   Ticker: ${this.symbol}
                   Strategy: BullishMomentumStrategy
-                  Status: Buy
+                  Status: Buy,
+                  Shares: ${margins.shares},
+                  Limit: ${close},
+                  Stop Loss: ${margins.stopLoss},
+                  Take Profit: ${margins.takeProfit}
                   Statistics:
                     - Close Price: ${close}
                     - Resistance: ${this.resistance}

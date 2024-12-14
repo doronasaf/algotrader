@@ -11,8 +11,8 @@ const logger = getEntityLogger('analytics');
 // If both conditions are met, a buy signal is generated.
 
 class OversoldWithUpwardMomentumStrategy extends IMarketAnalyzer {
-    constructor(symbol, marketData, support, resistance) {
-        super(symbol, marketData, support, resistance);
+    constructor(symbol, marketData, support, resistance, params) {
+        super(symbol, marketData, support, resistance, params);
         this.numberOfPrevVolumes = 20;
         this.dynamicVolumeThreshold = 1.3;
         this.rsiPeriod= 9;
@@ -35,10 +35,15 @@ class OversoldWithUpwardMomentumStrategy extends IMarketAnalyzer {
             const oversoldThreshold = 30;
             // Check for entry signals
             if (rsiValue < oversoldThreshold && macdValue.histogram > 0) {
+                const margins = this.calculateMargins();
                 logger.info(`
                   Ticker: ${this.symbol}
                   Strategy: OversoldWithUpwardMomentumStrategy
                   Status: Buy
+                  Shares: ${margins.shares},
+                  Limit: ${close},
+                  Stop Loss: ${margins.stopLoss},
+                  Take Profit: ${margins.takeProfit}
                   Statistics:
                     - RSI:
                       * Value: ${rsiValue}

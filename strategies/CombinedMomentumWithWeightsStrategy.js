@@ -4,8 +4,8 @@ const getEntityLogger = require('../utils/logger/loggerManager');
 const logger = getEntityLogger('analytics');
 
 class CombinedMomentumWithWeightsStrategy extends IMarketAnalyzer {
-    constructor(symbol, marketData, support = null, resistance = null) {
-        super(symbol, marketData, support, resistance);
+    constructor(symbol, marketData, support, resistance, params) {
+        super(symbol, marketData, support, resistance, params);
         this.rsiPeriod = 14
         this.macdFast = 12;
         this.macdSlow = 26;
@@ -104,10 +104,15 @@ class CombinedMomentumWithWeightsStrategy extends IMarketAnalyzer {
 
         let signal = this.generateSignal(totalScore, threshold);
         if (signal === 1) {
+            const margins = this.calculateMargins();
             logger.info(`
               Ticker: ${this.symbol}
               Strategy: CombinedMomentumWithWeightsStrategy
               Status: Buy
+              Shares: ${margins.shares},
+              Limit: ${close},
+              Stop Loss: ${margins.stopLoss},
+              Take Profit: ${margins.takeProfit}
               Statistics:
                 - Total Score: ${totalScore}
                 - Strategy Breakdown:

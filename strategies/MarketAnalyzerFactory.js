@@ -16,18 +16,18 @@ const TradingStrategy = {
 
 
 class MarketAnalyzerFactory {
-    static createAnalyzer(tradingStrategy, symbol, marketData, support, resistance) {
+    static createAnalyzer(tradingStrategy, symbol, marketData, support, resistance, params) {
         switch (tradingStrategy) {
             case TradingStrategy.BullishMomentum:
-                return new BullishMomentumStrategy(symbol, marketData, support, resistance);
+                return new BullishMomentumStrategy(symbol, marketData, support, resistance, params);
             case TradingStrategy.OversoldWithUpwardMomentum:
-                return new OversoldWithUpwardMomentumStrategy(symbol, marketData, support, resistance);
+                return new OversoldWithUpwardMomentumStrategy(symbol, marketData, support, resistance, params);
             case TradingStrategy.CombinedMomentum:
-                return new CombinedMomentumStrategy(symbol, marketData, support, resistance);
+                return new CombinedMomentumStrategy(symbol, marketData, support, resistance, params);
             case TradingStrategy.CombinedWithWeightMomentum:
-                return new CombinedMomentumWithWeightsStrategy(symbol, marketData, support, resistance);
+                return new CombinedMomentumWithWeightsStrategy(symbol, marketData, support, resistance, params);
             case TradingStrategy.KeltnerChannelsStrategy:
-                return new KeltnerChannelsStrategy(symbol, marketData);
+                return new KeltnerChannelsStrategy(symbol, marketData, support, resistance, params);
             // case TradingStrategy.DynamicWeightedStrategy:
             //     return new DynamicWeightedStrategy(symbol, marketData, support, resistance);
             default:

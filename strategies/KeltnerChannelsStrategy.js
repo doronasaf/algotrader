@@ -1,12 +1,14 @@
 const {EMA, ATR, RSI, MACD, BollingerBands} = require("technicalindicators");
 const getEntityLogger = require('../utils/logger/loggerManager');
+const {IMarketAnalyzer} = require("./IMarketAnalyzer");
 const logger = getEntityLogger('analytics');
 
 /**
  * Keltner Channels Strategy
  */
-class KeltnerChannelsStrategy {
-    constructor(symbol, marketData, emaPeriod = 20, atrPeriod = 14, multiplier = 2) {
+class KeltnerChannelsStrategy extends IMarketAnalyzer{
+    constructor(symbol, marketData, support, resistance, params, emaPeriod = 20, atrPeriod = 14, multiplier = 2) {
+        super(symbol, marketData, support, resistance, params);
         this.symbol = symbol;
         this.marketData = marketData; // { closes, highs, lows }
         this.emaPeriod = emaPeriod; // EMA period for middle line
@@ -108,10 +110,15 @@ class KeltnerChannelsStrategy {
             // Bullish Breakout: Price consistently near or above the upper band
             if (lastClose > lastUpper && rsi > 50 && lastHistogram > 0) {
                 // write the log like that
+                const margins = this.calculateMargins();
                 logger.info(`
                     Ticker: ${this.symbol}
                     Strategy: KeltnerChannelsStrategy
                     Status: Buy
+                    Shares: ${margins.shares},
+                    Limit: ${close},
+                    Stop Loss: ${margins.stopLoss},
+                  Take Profit: ${margins.takeProfit}
                     Statistics:
                       - Close Price: ${lastClose}
                       - RSI: ${rsi}
