@@ -1,7 +1,8 @@
 const { EMA, RSI, ATR, VWAP, MACD, BollingerBands, Supertrend } = require('technicalindicators');
 const {IMarketAnalyzer} = require("./IMarketAnalyzer");
 const getEntityLogger = require('../utils/logger/loggerManager');
-const logger = getEntityLogger('analytics');
+const analyticsLogger = getEntityLogger('analytics');
+const appLogger = getEntityLogger('app');
 
 
 class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
@@ -158,6 +159,63 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         return heikinAshi;
     }
 
+    calculateCMF(closes, highs, lows, volumes, period = 20) {
+        if (!closes || !highs || !lows || !volumes || closes.length < period) {
+            throw new Error("Insufficient data for CMF calculation");
+        }
+
+        let moneyFlowVolumeSum = 0;
+        let volumeSum = 0;
+
+        for (let i = closes.length - period; i < closes.length; i++) {
+            const moneyFlowMultiplier =
+                ((closes[i] - lows[i]) - (highs[i] - closes[i])) / (highs[i] - lows[i] || 1); // Avoid division by zero
+            const moneyFlowVolume = moneyFlowMultiplier * volumes[i];
+            moneyFlowVolumeSum += moneyFlowVolume;
+            volumeSum += volumes[i];
+        }
+
+        return volumeSum === 0 ? 0 : moneyFlowVolumeSum / volumeSum;
+    }
+
+    /**
+     * Evaluate a stock's trading opportunity based on CMF, EMA, and RSI.
+     * @param {Object} marketData - Object containing market data { closes, highs, lows, volumes }.
+     * @param {Object} params - Configuration parameters for the strategy.
+     * @returns {number} - 1 for buy, -1 for sell, 0 for hold.
+     */
+    evaluateCMFStrategy() {
+        const { closes, highs, lows, volumes } = this.marketData;
+
+        // Calculate CMF
+        this.cmf = this.calculateCMF(closes, highs, lows, volumes, this.cmfPeriod);
+
+        // Calculate RSI
+        const rsi = RSI.calculate({ values: closes, period: this.rsiPeriod });
+        this.lastRSI = rsi[rsi.length - 1];
+
+        // Calculate EMAs
+        const emaShort = EMA.calculate({ values: closes, period: this.emaShortPeriod });
+        const emaLong = EMA.calculate({ values: closes, period: this.emaLongPeriod });
+
+        const lastEMAShort = emaShort[emaShort.length - 1];
+        const lastEMALong = emaLong[emaLong.length - 1];
+
+        // Determine trading signals
+        const isBullish = cmf > 0 && lastEMAShort > lastEMALong && lastRSI > this.highRsiBulishThreshold;
+        const isBearish = cmf < 0 && lastEMAShort < lastEMALong && lastRSI < this.lowRsiBearishThreshold;
+
+        if (isBullish) {
+            appLogger.info(`Bullish Signal: CMF = ${cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${lastRSI}`);
+            return 1; // Buy
+        } else if (isBearish) {
+            appLogger.info(`Bearish Signal: CMF = ${cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${lastRSI}`);
+            return -1; // Sell
+        }
+
+        return 0; // Hold
+    }
+
     evaluateHeikinAshi() {
         const heikinAshi = this.calculateHeikinAshi();
 
@@ -178,6 +236,7 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
         return 0; // Hold/Neutral
     }
+
     evaluateEMA() {
         const { closes } = this.marketData;
         const emaShort = this.calculateEMA(closes, this.emaShortPeriod);
@@ -280,38 +339,37 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
     async evaluateBreakout() {
         // Combine signals from all strategies
-        const emaSignal = this.evaluateEMA();
-        const rsiSignal = this.evaluateRSI();
+        // const emaSignal = this.evaluateEMA(); // included in evaluateCMFStrategy
+        // const rsiSignal = this.evaluateRSI(); // included in evaluateCMFStrategy
         const vwapSignal = this.evaluateVWAP();
         const macdSignal = this.evaluateMACD();
         const supertrendSignal = this.evaluateSupertrend();
         const keltnerSignal = this.evaluateKeltnerChannels();
         const rvolSignal = this.evaluateRVOL();
         const heikinAshiSignal = this.evaluateHeikinAshi();
+        const cmfSignal = this.evaluateCMFStrategy();
 
-        const signals = [emaSignal, rsiSignal, vwapSignal, macdSignal, supertrendSignal, keltnerSignal, rvolSignal, heikinAshiSignal];
+        const signals = [vwapSignal, macdSignal, supertrendSignal, keltnerSignal, rvolSignal, heikinAshiSignal, cmfSignal];
         const buySignals = signals.filter((s) => s === 1).length;
         const sellSignals = signals.filter((s) => s === -1).length;
 
         if (buySignals > sellSignals) {
             this.margins = this.calculateMargins();
-            logger.info(`
+            analyticsLogger.info(`
                     Ticker: ${this.symbol}
                     Strategy: TrendMomentumBreakoutStrategy
                     Status: Buy
-                    Shares: ${margins.shares},
+                    Shares: ${this.margins.shares},
                     Limit: ${close},
-                    Stop Loss: ${margins.stopLoss},
-                    Take Profit: ${margins.takeProfit}
+                    Stop Loss: ${this.margins.stopLoss},
+                    Take Profit: ${this.margins.takeProfit}
                     Statistics:
                       - EMA:
                         * Short Period: ${this.emaShortPeriod}
                         * Long Period: ${this.emaLongPeriod}
-                        * Score: ${emaSignal} 
                       - RSI:
                         * Value: ${this.lastRSI}
                         * RSI Range: >${this.highRsiBulishThreshold}, indicating bullish momentum
-                        * Score: ${rsiSignal}
                       - VWAP:
                         * Value: ${this.vwap}
                         * Score: ${vwapSignal}
@@ -330,6 +388,9 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                         * Score: ${keltnerSignal}
                       - Heikin-Ashi:
                         * Score: ${heikinAshiSignal}
+                      - CMF (includes RSI and EMA):
+                        * Value: ${this.cmf}
+                        * Score: ${cmfSignal}
                 `);
             return 1; // Buy Signal
         } else if (sellSignals > buySignals) {
