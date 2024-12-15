@@ -1,4 +1,4 @@
-
+const config = require("../config/config.json");
 // Define market hours (Eastern Time for NYSE)
 const tradingConfig = {
     premarket: { enabled: true, startTime: "09:00", endTime: "14:30" }, // UTC equivalent of 4:00 AM to 9:30 AM ET
@@ -6,10 +6,10 @@ const tradingConfig = {
     afterHours: { enabled: true, startTime: "21:00", endTime: "01:00" }, // UTC equivalent of 4:00 PM to 8:00 PM ET
 };
 
-const DEBUG = true;
+const ALWAYS_OPEN = config.app.tragingHours.alwaysOpen;
 
 function isWithinTradingHours(config) {
-    if (DEBUG) return true;
+    if (ALWAYS_OPEN) return true;
     const now = new Date();
     const utcHour = now.getUTCHours();
     const utcMinute = now.getUTCMinutes();

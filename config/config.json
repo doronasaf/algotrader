@@ -1,0 +1,20 @@
+{
+  "app": {
+    "tragingHours" : {"alwaysOpen" : true},
+    "disableTrading": false,
+    "DEBUG": false
+  },
+  "trading": {
+    "budget": 20000,
+    "singleTradeCapital": 3000,
+    "takeProfit": 1.006,
+    "stopLoss": 0.99
+  },
+  "dataSource": {
+    "fetchInterval": 1500,
+    "testFetchInterval": 5000,
+    "provider": "yahoo",
+    "provider2": "alpacaStream",
+    "provider3": "backtesting"
+  }
+}

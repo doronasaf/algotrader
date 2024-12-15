@@ -1,4 +1,5 @@
 const getEntityLogger = require('../utils/logger/loggerManager');
+const appConfig = require('../config/config.json');
 const { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} = require("../broker/alpaca/tradeService");
 const { MarketAnalyzerFactory, TradingStrategy } = require("../strategies/MarketAnalyzerFactory");
 const { fetchMarketData } = require("../broker/MarketDataFetcher");
@@ -9,6 +10,7 @@ const transactionLog = getEntityLogger('transactions');
 const analyticsLog = getEntityLogger('analytics');
 const appLog = getEntityLogger('app');
 const readline = require("readline");
+const {TimerLog} = require("../utils/TimerLog");
 
 const workers = new Map(); // Map to track workers by stock symbol {symbol: {worker, params}}
 const stopFlags = new Map(); // Map to track stop flags by stock symbol
@@ -17,9 +19,9 @@ const tradeOrders = [];
 const strategyTypes = Object.values(TradingStrategy);
 let running = true; // Flag to control engine status
 
-let budget = 20000; // Total budget available
+let budget = appConfig.trading.budget; // Total budget available
 let allocatedBudget = 0; // Budget currently allocated to active workers
-const defTradingParams = { capital: 3000, takeProfit: 1.006, stopLoss: 0.98 }; // Default parameters
+const defTradingParams = { capital: appConfig.trading.singleTradeCapital, takeProfit: appConfig.trading.takeProfit, stopLoss: appConfig.trading.stopLoss }; // Default parameters
 
 
 const analyzeEnhancedStrategy = async (ticker, params) => {
@@ -28,17 +30,18 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     let phase = "A"; // Start with Accumulation
     let capital = params.capital; // Initial capital
     let position = 0; // Number of shares held
-    const regularInterval = 2000;
+    const regularInterval = appConfig.app.disableTrading ? appConfig.dataSource.testFetchInterval : appConfig.dataSource.fetchInterval;//2000;
     const monitoringInterval = 60000;
     let timeoutInterval = regularInterval;
+    let analyzer;
+    const timerLog = new TimerLog();
+
 
     for (const session in tradingConfig) {
         if (session !== "market") continue;
-        const config = tradingConfig[session];
-        if (!config.enabled) continue;
-        // log.info(`Starting trading session for ${ticker}: ${session}`);
-
-        while (isWithinTradingHours(config)) {
+        const tradingSession = tradingConfig[session];
+        if (!tradingSession.enabled) continue;
+        while (isWithinTradingHours(tradingSession)) {
             // **Check Stop Flag**
             if (stopFlags.get(ticker) && phase !== "E") {
                 appLog.info(`Worker for ${ticker} stopped by user, phase = ${phase}`);
@@ -55,6 +58,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
             let close = closes[closes.length - 1];
             const high = highs[highs.length - 1];
             const low = lows[lows.length - 1];
+            if (!analyzer) analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance, params);
 
             switch (phase) {
                 case "A": // Accumulation
@@ -64,36 +68,33 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                     } else {
                         if (high > resistance) resistance = high;
                         if (low < support) support = low;
-
-                        const analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance, params);
-                        const accumulationAchieved = await analyzer.evaluateAccumulation();
-                        if (accumulationAchieved) {
-                            phase = "B";
-                            appLog.info(`Ticker ${ticker} | Moved to Breakout Phase (B)`);
-                        }
+                    }
+                    analyzer.setSupportResistance(support, resistance);
+                    analyzer.setMarketData({closes, highs, lows, volumes});
+                    timerLog.start(`Ticker ${ticker} | Strategy: ${params.type} | Accumulation Phase (A)`);
+                    const accumulationAchieved = await analyzer.evaluateAccumulation();
+                    timerLog.stop(`Ticker ${ticker} | Accumulation Phase (A)`);
+                    if (accumulationAchieved) {
+                        phase = "B";
+                        appLog.info(`Ticker ${ticker} | Strategy: ${params.type} | Moved to Breakout Phase (B)`);
                     }
                     break;
 
                 case "B": // Breakout
-                    const analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance, params);
+                    // analyzer.setSupportResistance(support, resistance);
+                    analyzer.setMarketData({ closes, highs, lows, volumes });
+                    timerLog.start(`Ticker ${ticker} | Strategy: ${params.type} | Breakout Phase (B)`);
                     const breakoutConfirmed = await analyzer.evaluateBreakout();
+                    timerLog.stop(`Ticker ${ticker} | Strategy: ${params.type} | Breakout Phase (B)`);
                     if (breakoutConfirmed === 1) { // buy
-                        const margins = analyzer.getMargins();
-                        const newShares = Math.floor(margins.shares);
-                        const newTakeProfit = margins.takeProfit;
-                        const newStopLoss = margins.stopLoss;
-                        const shares = Math.floor(capital / close);
+                        const {shares, takeProfit, stopLoss} = analyzer.getMargins();
+                        // const shares = Math.floor(capital / close);
                         position += shares;
                         capital -= shares * close;
-
-                        const takeProfit = Math.floor(close * params.takeProfit * 100) / 100;
-                        const stopLoss = Math.floor(close * params.stopLoss * 100) / 100;
-                        close = Math.floor(close * 100) / 100;
-
-                        if (shares !== newShares && takeProfit !== newTakeProfit && stopLoss !== newStopLoss) {
-                            appLog.info(`Ticker ${ticker} | Updated Margins: Shares = ${newShares}, TP = ${newTakeProfit}, SL = ${newStopLoss}`);
+                        if (appConfig.app.disableTrading) {
+                            phase = "C"; // Skip execution monitoring
+                            break;
                         }
-
                         const orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
                         orderResult.strategy = analyzer.toString();
                         transactionLog.info(`Ticker ${ticker} | Buy Order: Shares = ${shares}, Buy Price = ${close}, TP = ${takeProfit}, SL = ${stopLoss}`);

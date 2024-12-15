@@ -31,8 +31,6 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
         // Accumulation Thresholds
         this.volatilityThreshold = 0.005; // Small price range
         this.lowVolumeMultiplier = 0.5; // Volume < 50% of average
-
-        this.margins = {};
     }
 
     /**
@@ -113,7 +111,7 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
             // Bullish Breakout: Price consistently near or above the upper band
             if (lastClose > lastUpper && rsi > this.highRsiBuyThreshold && lastHistogram > 0) {
                 // write the log like that
-                this.margins = this.calculateMargins();
+                this.calculateMargins();
                 logger.info(`
                     Ticker: ${this.symbol}
                     Strategy: KeltnerChannelsStrategy
@@ -222,9 +220,6 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
         return false;
     }
 
-    getMargins() {
-        return this.margins;
-    }
 }
 
 module.exports = {

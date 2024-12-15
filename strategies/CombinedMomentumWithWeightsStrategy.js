@@ -14,13 +14,6 @@ class CombinedMomentumWithWeightsStrategy extends IMarketAnalyzer {
         this.breakoutThreshold = 1.004; // 0.4% above resistance
         this.narrowRangeThreshold = 1.5; // Pric
         this.weightsThreshold = 0.65;
-
-        this.margins = {};
-    }
-
-    setSupportResistance(support, resistance) {
-        this.support = support;
-        this.resistance = resistance;
     }
 
     async evaluateAccumulation() {
@@ -35,7 +28,7 @@ class CombinedMomentumWithWeightsStrategy extends IMarketAnalyzer {
             const buySignal = this.combineStrategies(this.marketData, weights, this.weightsThreshold);
 
             if (buySignal === 1) {
-                this.margins = this.calculateMargins();
+                this.calculateMargins();
                 logger.info(`Ticker: ${this.symbol} | CombinedMomentumWithWeightsStrategy | Buy | `);
             }
         } catch (error) {
@@ -107,7 +100,7 @@ class CombinedMomentumWithWeightsStrategy extends IMarketAnalyzer {
 
         let signal = this.generateSignal(totalScore, threshold);
         if (signal === 1) {
-            const margins = this.calculateMargins();
+            this.calculateMargins();
             logger.info(`
               Ticker: ${this.symbol}
               Strategy: CombinedMomentumWithWeightsStrategy
@@ -133,10 +126,6 @@ class CombinedMomentumWithWeightsStrategy extends IMarketAnalyzer {
         if (combinedScore > threshold) return 1; // "BUY";
         if (combinedScore < -threshold) return -1 // "SELL";
         return 0; // "HOLD";
-    }
-
-    getMargins() {
-        return this.margins;
     }
 }
 

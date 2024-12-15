@@ -8,10 +8,16 @@ class IMarketAnalyzer {
         this.support = support;
         this.resistance = resistance;
         this.params = params;
+        this.margins = {};
     }
 
     setSupportResistance(support, resistance) {
-        throw new Error('Method setSupportResistance must be implemented.');
+        this.support = support;
+        this.resistance = resistance;
+    }
+
+    setMarketData(marketData) {
+        this.marketData = marketData;
     }
 
     async evaluateBreakout() {
@@ -29,11 +35,15 @@ class IMarketAnalyzer {
         const takeProfit = Math.floor(close * params.takeProfit * 100) / 100;
         const stopLoss = Math.floor(close * params.stopLoss * 100) / 100;
         close = Math.floor(close * 100) / 100;
-        return {shares, takeProfit, stopLoss, close};
+        this.margins.shares = shares;
+        this.margins.close = close;
+        this.margins.takeProfit = takeProfit;
+        this.margins.stopLoss = stopLoss;
+        return this.margins;
     }
 
     getMargins() {
-        throw new Error('Method evaluateAccumulation must be implemented.');
+        return this.margins;
     }
 
     toString() {

@@ -1,10 +1,10 @@
+const config = require('../config/config.json');
 const { fetchMarketDataFromYahoo } = require("../broker/yahoo/quoteService");
 const { fetchMarketDataFromAlpaca, handleQuoteUpdate } = require("../broker/alpaca/quoteService");
 const { fetchMarketDataFromBackTester } = require("../backtesting/BackTester");
 
 
-const mode = 'yahoo'; // 'yahoo' or 'alpacaStream' or backtesting
-// const mode = 'backtesting'; // 'yahoo' or 'alpacaStream' or backtesting
+const mode = config.dataSource.provider; // 'yahoo' or 'alpacaStream' or backtesting
 
 const fetchMarketData = async (symbol) => {
     let closes, highs, lows, volumes, update;

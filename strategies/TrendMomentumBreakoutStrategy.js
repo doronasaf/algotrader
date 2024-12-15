@@ -33,7 +33,6 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
         this.lowRsiBearishThreshold = 40;
         this.highRsiBulishThreshold = 60;
-        this.margins = {};
     }
 
     calculateEMA(closes, period) {
@@ -142,13 +141,23 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     }
 
     calculateKeltnerChannels(highs, lows, closes) {
+        // Calculate EMA (Middle Line)
         const middleLine = EMA.calculate({ values: closes, period: this.atrPeriod });
+
+        // Calculate ATR
         const atr = this.calculateATR(highs, lows, closes);
-        const upperBand = middleLine.map((ml, i) => ml + atr[i] * this.keltnerMultiplier);
-        const lowerBand = middleLine.map((ml, i) => ml - atr[i] * this.keltnerMultiplier);
+
+        // Ensure both arrays have the same length
+        const minLength = Math.min(middleLine.length, atr.length);
+        const trimmedMiddleLine = middleLine.slice(-minLength);
+        const trimmedATR = atr.slice(-minLength);
+
+        // Calculate Upper and Lower Bands
+        const upperBand = trimmedMiddleLine.map((ml, i) => ml + trimmedATR[i] * this.keltnerMultiplier);
+        const lowerBand = trimmedMiddleLine.map((ml, i) => ml - trimmedATR[i] * this.keltnerMultiplier);
 
         return {
-            middleLine,
+            middleLine: trimmedMiddleLine,
             upperBand,
             lowerBand,
         };
@@ -241,8 +250,8 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const lastEMALong = emaLong[emaLong.length - 1];
 
         // Determine trading signals
-        const isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && lastRSI > this.highRsiBulishThreshold;
-        const isBearish = this.cmf < 0 && lastEMAShort < lastEMALong && lastRSI < this.lowRsiBearishThreshold;
+        const isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && this.lastRSI > this.highRsiBulishThreshold;
+        const isBearish = this.cmf < 0 && lastEMAShort < lastEMALong && this.lastRSI < this.lowRsiBearishThreshold;
 
         if (isBullish) {
             appLogger.info(`Bullish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
@@ -360,7 +369,11 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         let close = this.marketData.closes[this.marketData.closes.length - 1];
         const shares = Math.floor(this.params.capital / close);
         const { stopLoss, takeProfit } = this.calculateStopLossAndTakeProfit();
-        return { shares, takeProfit, stopLoss, close };
+        this.margins.shares = shares;
+        this.margins.close = close;
+        this.margins.takeProfit = takeProfit;
+        this.margins.stopLoss = stopLoss;
+        return this.margins;
     }
 
     calculateStopLossAndTakeProfit() {
@@ -389,11 +402,13 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const cmfSignal = this.evaluateCMFStrategy();
 
         const signals = [vwapSignal, macdSignal, supertrendSignal, keltnerSignal, rvolSignal, heikinAshiSignal, cmfSignal];
-        const buySignals = signals.filter((s) => s === 1).length;
-        const sellSignals = signals.filter((s) => s === -1).length;
+        // const buySignals = signals.filter((s) => s === 1).length;
+        // const sellSignals = signals.filter((s) => s === -1).length;
+        const totalScore = signals.reduce((acc, signal) => acc + signal, 0);
+        const close = this.marketData.closes[this.marketData.closes.length - 1];
 
-        if (buySignals > sellSignals) {
-            this.margins = this.calculateMargins();
+        if (totalScore === signals.length) {
+            this.calculateMargins();
             analyticsLogger.info(`
                     Ticker: ${this.symbol}
                     Strategy: TrendMomentumBreakoutStrategy
@@ -440,10 +455,6 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
     async evaluateAccumulation() {
         return true;
-    }
-
-    getMargins() {
-        return this.margins;
     }
 }
 

@@ -30,12 +30,6 @@ class BullishMomentumStrategy extends IMarketAnalyzer {
         this.macdFastEMA= 6;
         this.macdSlowEMA= 14;
         this.macdSignalEMA= 3;
-        this.margins = {};
-    }
-
-    setSupportResistance(support, resistance) {
-        this.support = support;
-        this.resistance = resistance;
     }
 
     async evaluateBreakout() {
@@ -51,7 +45,7 @@ class BullishMomentumStrategy extends IMarketAnalyzer {
             // Check for entry signals
             if (close > this.resistance * this.breakoutThreshold &&
                 rsiValue > this.rsiBullishBreakoutMin && rsiValue < this.rsiBullishBreakoutMax) {
-                this.margins = this.calculateMargins();
+                this.calculateMargins();
                 logger.info(`
                   Ticker: ${this.symbol}
                   Strategy: BullishMomentumStrategy
@@ -135,9 +129,6 @@ class BullishMomentumStrategy extends IMarketAnalyzer {
         return accumulationCompleted;
     }
 
-    getMargins() {
-        return this.margins;
-    }
 }
 
 module.exports =  {
