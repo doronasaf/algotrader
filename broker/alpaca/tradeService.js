@@ -3,7 +3,7 @@ const Alpaca = require("@alpacahq/alpaca-trade-api");
 
 // Alpaca API configuration
 const alpaca = new Alpaca({
-    keyId: process.env.APCA_API_KEY_ID || 'PKNLI3BZGX8M03HC0VKO',
+    keyId: process.env.APCA_API_KEY_ID || 'PKZ830JQTITVYFIM6QEE',
     secretKey: process.env.APCA_API_SECRET_KEY || '3GoJTGTUuw6a2pnwmudQmZdujLB5lfWw7zFuLjCr',
     paper: process.env.APCA_PAPER_API || true, // Set to false for live trading
     usePolygon: false,
@@ -224,13 +224,13 @@ async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPr
             side: "buy",                                // Buy action
             type: "limit",                              // Limit order
             time_in_force: "gtc",                       // Good till canceled
-            limit_price: limitPrice, // The price at which you want to buy
+            limit_price: Number((limitPrice).toFixed(2)), // The price at which you want to buy
             order_class: "bracket",                     // Bracket order
             take_profit: {
-                limit_price: takeProfitPrice, // Price to take profit
+                limit_price: Number((takeProfitPrice).toFixed(2)), // Price to take profit
             },
             stop_loss: {
-                stop_price: stopLossPrice, // Stop-loss activation price
+                stop_price: Number((stopLossPrice).toFixed(2)), // Stop-loss activation price
             },
         });
 

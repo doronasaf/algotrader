@@ -2,7 +2,7 @@ const yahooFinance = require('yahoo-finance2').default;
 const {calculateIndicatorsExt} = require("../utils/TechUtils");
 const getEntityLogger = require('../utils/logger/loggerManager');
 const logger = getEntityLogger('analytics');
-
+const appConfig = require('../config/config.json');
 // Algorithm Overview
 // 1. Identify Stocks with Potential for 4–5% Intraday Range
 // This step involves assessing historical and pre-market movement.
@@ -25,6 +25,9 @@ const logger = getEntityLogger('analytics');
 
 // TODO: For long term, nalyze stocks for period of month
 
+const atrThreshold = appConfig.stockSelector.atrThreshold;
+const chartHistoryInDays = appConfig.stockSelector.chartHistoryInDays;
+
 const identifyStocks = async (todaysEarningStocks) => {
     const candidates = [];
     try {
@@ -44,7 +47,7 @@ const identifyStocks = async (todaysEarningStocks) => {
 
         console.log("Trending Symbols:", trendingSymbols);
         const now = new Date();
-        const avrIndicatorPeriod = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000); // 7 days ago
+        const avrIndicatorPeriod = new Date(now.getTime() - chartHistoryInDays * 24 * 60 * 60 * 1000); // 7 days ago
 
         const options = {
             interval: "1d",
@@ -57,6 +60,7 @@ const identifyStocks = async (todaysEarningStocks) => {
             try {
                 // Fetch historical data to calculate ATR
                 const chart = await yahooFinance.chart(symbol, options);
+                if (chart?.meta?.instrumentType === 'CRYPTOCURRENCY') continue; // Skip crypto
                 const regMarketVolume = chart.meta.regularMarketVolume;
                 const regMarketPrice = chart.meta.regularMarketPrice;
                 if (regMarketVolume * regMarketPrice < 200_000_000) continue; // Skip low volume stocks
@@ -68,12 +72,11 @@ const identifyStocks = async (todaysEarningStocks) => {
                 // Calculate ATR for the last 7 days
                 if (!prices || !highs || !lows || !volumes) continue; // Skip invalid data
 
-                const atr = highs.map((high, i) => high - lows[i]);
+                const atr = highs.map((high, i) => high - lows[i]); // the movement within the period
                 const avgATR = atr.reduce((a, b) => a + b, 0) / atr.length;
                 const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
                 const atrPercentage = (avgATR / avgPrice) * 100;
-                const atrThreshold = 2.5; // 2.5% threshold
-                if (atrPercentage > atrThreshold || earningStocksMap[symbol]) {
+                if (atrPercentage > atrThreshold || earningStocksMap[symbol]) { // accaept the stock if it is earning stock
                     // Step 3: Check Pre-Market Data
                     const preMarketQuote = await yahooFinance.quote(symbol);
                     const billion = 1e9;
@@ -129,10 +132,10 @@ function formatMarketCap(marketCap) {
 }
 
 
-// // implement the iffy pattern to run the function
-// (async () => {
-//     await identifyStocks();
-// })();
+// implement the iffy pattern to run the function
+(async () => {
+    await identifyStocks();
+})();
 
 module.exports = {
     identifyStocks,

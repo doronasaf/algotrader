@@ -11,6 +11,7 @@ const analyticsLog = getEntityLogger('analytics');
 const appLog = getEntityLogger('app');
 const readline = require("readline");
 const {TimerLog} = require("../utils/TimerLog");
+const { fetchCSV } = require('../stockInfo/GoogleSheetStockSelector');
 
 const workers = new Map(); // Map to track workers by stock symbol {symbol: {worker, params}}
 const stopFlags = new Map(); // Map to track stop flags by stock symbol
@@ -33,8 +34,10 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     const regularInterval = appConfig.app.disableTrading ? appConfig.dataSource.testFetchInterval : appConfig.dataSource.fetchInterval;//2000;
     const monitoringInterval = 60000;
     let timeoutInterval = regularInterval;
-    let analyzer;
     const timerLog = new TimerLog();
+    const analyzersList = [];
+    let selectedAnalyzer;
+    let accumulationAchieved, breakoutConfirmed;
 
 
     for (const session in tradingConfig) {
@@ -58,7 +61,12 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
             let close = closes[closes.length - 1];
             const high = highs[highs.length - 1];
             const low = lows[lows.length - 1];
-            if (!analyzer) analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance, params);
+            if (analyzersList.length === 0) {
+                for (const strategy of strategyTypes) {
+                    analyzersList.push({analyzer: MarketAnalyzerFactory.createAnalyzer(strategy, ticker, { closes, highs, lows, volumes }, support, resistance, params), accCompleted:false});
+                }
+            }
+            // if (!analyzer) analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance, params);
 
             switch (phase) {
                 case "A": // Accumulation
@@ -69,34 +77,54 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         if (high > resistance) resistance = high;
                         if (low < support) support = low;
                     }
-                    analyzer.setSupportResistance(support, resistance);
-                    analyzer.setMarketData({closes, highs, lows, volumes});
-                    timerLog.start(`Ticker ${ticker} | Strategy: ${params.type} | Accumulation Phase (A)`);
-                    const accumulationAchieved = await analyzer.evaluateAccumulation();
-                    timerLog.stop(`Ticker ${ticker} | Accumulation Phase (A)`);
-                    if (accumulationAchieved) {
-                        phase = "B";
-                        appLog.info(`Ticker ${ticker} | Strategy: ${params.type} | Moved to Breakout Phase (B)`);
+                    for (const analyzerItem of analyzersList) {
+                        selectedAnalyzer = analyzerItem.analyzer;
+                        selectedAnalyzer.setSupportResistance(support, resistance);
+                        selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
+                        timerLog.start(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Accumulation Phase (A)`);
+                        accumulationAchieved = await selectedAnalyzer.evaluateAccumulation();
+                        analyzerItem.accCompleted = accumulationAchieved;
+                        timerLog.stop(`Ticker ${ticker} | Accumulation Phase (A)`);
+                        if (accumulationAchieved) {
+                            phase = "B";
+                            appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Moved to Breakout Phase (B)`);
+                        }
                     }
                     break;
-
                 case "B": // Breakout
                     // analyzer.setSupportResistance(support, resistance);
-                    analyzer.setMarketData({ closes, highs, lows, volumes });
-                    timerLog.start(`Ticker ${ticker} | Strategy: ${params.type} | Breakout Phase (B)`);
-                    const breakoutConfirmed = await analyzer.evaluateBreakout();
-                    timerLog.stop(`Ticker ${ticker} | Strategy: ${params.type} | Breakout Phase (B)`);
+                    let breakoutConfirmed = false
+                    for (const analyzerItem of analyzersList) {
+                        selectedAnalyzer = analyzerItem.analyzer;
+                        if (!analyzerItem.accCompleted) {
+                            selectedAnalyzer.setSupportResistance(support, resistance);
+                            selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
+                            accumulationAchieved = await selectedAnalyzer.evaluateAccumulation();
+                            analyzerItem.accCompleted = accumulationAchieved;
+                        };
+                        if (analyzerItem.accCompleted) {
+                            selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
+                            timerLog.start(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Breakout Phase (B)`);
+                            breakoutConfirmed = await selectedAnalyzer.evaluateBreakout();
+                            timerLog.stop(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Breakout Phase (B)`);
+                            if (breakoutConfirmed === 1) {
+                                break;
+                            }
+                        }
+                    }
                     if (breakoutConfirmed === 1) { // buy
-                        const {shares, takeProfit, stopLoss} = analyzer.getMargins();
+                        const {shares, takeProfit, stopLoss} = selectedAnalyzer.getMargins();
                         // const shares = Math.floor(capital / close);
                         position += shares;
                         capital -= shares * close;
-                        if (appConfig.app.disableTrading) {
+                        if (appConfig.app.disableTrading === true) {
+                            analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
                             phase = "C"; // Skip execution monitoring
                             break;
                         }
                         const orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
-                        orderResult.strategy = analyzer.toString();
+                        // const orderResult = await buyStock(ticker, shares, "limit", close);
+                        orderResult.strategy = selectedAnalyzer.toString();
                         transactionLog.info(`Ticker ${ticker} | Buy Order: Shares = ${shares}, Buy Price = ${close}, TP = ${takeProfit}, SL = ${stopLoss}`);
 
                         await writeToLog(ticker, close, shares, capital, orderResult, "bracket", "BUY", tradeOrders, sentTransactions);
@@ -110,7 +138,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                     break;
 
                 case "C": // Cleanup
-                    appLog.info(`Ticker ${ticker} | Strategy: ${analyzer?.toString()} | End of trading session`);
+                    appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer?.toString()} | End of trading session`);
                     return;
 
                 case "E": // Execution Monitoring
@@ -222,6 +250,7 @@ const startCLI = () => {
               - transactions : List all transactions.
               - stop-engine : Gracefully stop the engine and all workers.
               - refresh-stocks : Refresh the list of stock.
+              - refresh-ext-stocks : Refresh the list of stock from external source.
               - add-budget [amount]: Add budget to the engine.
               - help: Display this help message.
                     `);
@@ -279,6 +308,19 @@ const startCLI = () => {
                     let strategyType = strategyTypes[i % strategyTypes.length];
                     const symbol = stock.symbol;
                     tryRunWorker(stock, strategyType);
+                }
+                break;
+
+            case "refresh-ext-stocks":
+                console.log("Refresh from google sheets");
+                let stockList = await fetchCSV(appConfig.dataSource.google_sheets.url);
+                stockList.splice(10)
+                for (let i=0; i< stockList.length; i++) {
+                    if (!stockList[i][0]) continue;
+                    const symbol = stockList[i][0];
+                    const strategy = stockList[i][1];
+                    let strategyType = strategy && strategyTypes[strategy] ?  strategyTypes[strategy] : strategyTypes[i % strategyTypes.length];
+                    tryRunWorker({symbol}, strategyType);
                 }
                 break;
 

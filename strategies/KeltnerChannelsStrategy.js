@@ -117,7 +117,7 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
                     Strategy: KeltnerChannelsStrategy
                     Status: Buy
                     Shares: ${this.margins.shares},
-                    Limit: ${close},
+                    Limit: ${lastClose},
                     Stop Loss: ${this.margins.stopLoss},
                     Take Profit: ${this.margins.takeProfit}
                     Statistics:

@@ -30,10 +30,10 @@ class IMarketAnalyzer {
 
     calculateMargins() {
         let close = this.marketData.closes[this.marketData.closes.length - 1];
-        const shares = Math.floor(params.capital / close);
+        const shares = Math.floor(this.params.capital / close);
 
-        const takeProfit = Math.floor(close * params.takeProfit * 100) / 100;
-        const stopLoss = Math.floor(close * params.stopLoss * 100) / 100;
+        const takeProfit = Math.floor(close * this.params.takeProfit * 100) / 100;
+        const stopLoss = Math.floor(close * this.params.stopLoss * 100) / 100;
         close = Math.floor(close * 100) / 100;
         this.margins.shares = shares;
         this.margins.close = close;

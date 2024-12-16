@@ -257,7 +257,7 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             appLogger.info(`Bullish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
             return 1; // Buy
         } else if (isBearish) {
-            appLogger.info(`Bearish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
+            //appLogger.info(`Bearish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
             return -1; // Sell
         }
 
@@ -407,7 +407,8 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const totalScore = signals.reduce((acc, signal) => acc + signal, 0);
         const close = this.marketData.closes[this.marketData.closes.length - 1];
 
-        if (totalScore === signals.length) {
+        analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Score: ${totalScore} Target Score: ${signals.length} | Breakdown - VWAP: ${vwapSignal}, MACD: ${macdSignal}, Supertrend: ${supertrendSignal}, Keltner: ${keltnerSignal}, RVOL: ${rvolSignal}, Heikin-Ashi: ${heikinAshiSignal}, CMF: ${cmfSignal}`);
+        if (totalScore >= 4) {
             this.calculateMargins();
             analyticsLogger.info(`
                     Ticker: ${this.symbol}
