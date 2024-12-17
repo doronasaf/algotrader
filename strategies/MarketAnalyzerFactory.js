@@ -7,11 +7,11 @@ const {TrendMomentumBreakoutStrategy} = require("./TrendMomentumBreakoutStrategy
 
 const TradingStrategy = {
     TrendMomentumBreakoutStrategy: "TrendMomentumBreakoutStrategy",
-    CombinedWithWeightMomentum : "CombinedMomentumWithWeightsStrategy",
+    // CombinedWithWeightMomentum : "CombinedMomentumWithWeightsStrategy",
     // CombinedMomentum : "CombinedMomentumStrategy",
     // BullishMomentum : "BullishMomentumStrategy",
     // OversoldWithUpwardMomentum : "OversoldWithUpwardMomentumStrategy",
-    KeltnerChannelsStrategy: "KeltnerChannelsStrategy"
+    // KeltnerChannelsStrategy: "KeltnerChannelsStrategy"
 };
 
 

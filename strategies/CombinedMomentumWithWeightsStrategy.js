@@ -97,7 +97,7 @@ class CombinedMomentumWithWeightsStrategy extends IMarketAnalyzer {
 
         // Calculate total weighted score
         const totalScore = strategies.reduce((sum, strategy) => sum + strategy.score * strategy.weight, 0);
-
+        const close = prices.closes[prices.closes.length - 1];
         let signal = this.generateSignal(totalScore, threshold);
         if (signal === 1) {
             this.calculateMargins();

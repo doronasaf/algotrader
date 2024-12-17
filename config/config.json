@@ -1,8 +1,8 @@
 {
   "app": {
     "tragingHours" : {"alwaysOpen" : true},
-    "disableTrading": false,
-    "DEBUG": false
+    "disableTrading": true,
+    "DEBUG": true
   },
   "stockSelector": {
     "atrThreshold": 2.5,

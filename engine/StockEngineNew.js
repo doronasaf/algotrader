@@ -314,12 +314,12 @@ const startCLI = () => {
             case "refresh-ext-stocks":
                 console.log("Refresh from google sheets");
                 let stockList = await fetchCSV(appConfig.dataSource.google_sheets.url);
-                stockList.splice(10)
+                stockList.splice(15)
                 for (let i=0; i< stockList.length; i++) {
                     if (!stockList[i][0]) continue;
                     const symbol = stockList[i][0];
                     const strategy = stockList[i][1];
-                    let strategyType = strategy && strategyTypes[strategy] ?  strategyTypes[strategy] : strategyTypes[i % strategyTypes.length];
+                    let strategyType = TradingStrategy.TrendMomentumBreakoutStrategy;
                     tryRunWorker({symbol}, strategyType);
                 }
                 break;

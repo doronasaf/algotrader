@@ -42,7 +42,7 @@ const identifyStocks = async (todaysEarningStocks) => {
         let trendingSymbols = trending.quotes.map(item => item.symbol);
         if (todaysEarningStocks?.length > 0)  {
             todaysEarningStocks = todaysEarningStocks.map(item => item.symbol);
-            trendingSymbols = trendingSymbols.concat(todaysEarningStocks);
+            trendingSymbols = todaysEarningStocks.concat(trendingSymbols);
         }
 
         console.log("Trending Symbols:", trendingSymbols);
