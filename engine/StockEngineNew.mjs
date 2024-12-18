@@ -121,8 +121,8 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         capital -= shares * close;
                         if (appConf.app.disableTrading === true) {
                             analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
-                            let budgetInfo = global.budgetManager.getBudgetInfo();
-                            let trx = {ticker, source: params.source, action: "BUY", price: close, timestamp: nyseTime(), shares, takeProfit, stopLoss, potentialGain: (takeProfit - close) * shares, potentialLoss: (close - stopLoss) * shares, budgetRemaining: budgetInfo.remainingBudget, budgetAllocated: budgetInfo.allocatedBudget, status: "Demo"};
+                            let budgetInfo = await global.budgetManager.getBudgetInfo();
+                            let trx = {ticker, source: params.source, action: "BUY", price: close, timestamp: nyseTime(), shares, takeProfit, stopLoss, potentialGain: (takeProfit - close) * shares, potentialLoss: (close - stopLoss) * shares, budgetRemaining: budgetInfo.availableBudget, budgetAllocated: budgetInfo.allocatedBudget, status: "Demo"};
                             transactionLog.info(JSON.stringify(trx));
                             sentTransactions.push(trx);
                             phase = "C"; // Skip execution monitoring
@@ -237,6 +237,7 @@ const startCLI = () => {
 
     rl.on("line", async (line) => {
         const [command, ...args] = line.trim().split(" ");
+        let budgetInfo, counter=0;
 
         switch (command) {
             case "help":
@@ -250,6 +251,7 @@ const startCLI = () => {
               - refresh-stocks : Refresh the list of stock.
               - refresh-ext-stocks : Refresh the list of stock from external source.
               - add-budget [amount]: Add budget to the engine.
+              - budget-info: Get budget information.
               - help: Display this help message.
                     `);
                 break;
@@ -292,8 +294,10 @@ const startCLI = () => {
 
             case "list":
                 console.log("Active Workers:");
+                counter = 0;
                 for (const [symbol, { params }] of workers) {
-                    console.log(`- ${symbol}: Strategy = ${params.type}`);
+                    counter++;
+                    console.log(`${counter}) ${symbol}: Strategy = ${params.type}`);
                 }
                 console.log("Active strategies: ", strategyTypes);
                 break;
@@ -312,7 +316,7 @@ const startCLI = () => {
             case "refresh-ext-stocks":
                 console.log("Refresh from google sheets");
                 let stockList = await fetchCSV(appConf.dataSource.google_sheets.url);
-                stockList.splice(15)
+                stockList.splice(appConf.dataSource.google_sheets.maxSymbols);
                 for (let i=0; i< stockList.length; i++) {
                     if (!stockList[i][0]) continue;
                     const symbol = stockList[i][0];
@@ -322,20 +326,27 @@ const startCLI = () => {
                 }
                 break;
 
-                case "add-budget":
-                    if (!args[0]) {
-                        console.log("Usage: add-budget [amount]");
-                        break;
-                    }
-                    const amount = parseFloat(args[0]);
-                    if (isNaN(amount)) {
-                        console.log("Invalid amount.");
-                        break;
-                    }
-                    global.budget += amount;
-                    console.log(`Budget increased by ${amount}. Total budget: ${global.budget}`);
+            case "add-budget":
+                if (!args[0]) {
+                    console.log("Usage: add-budget [amount]");
                     break;
-                case "transactions":
+                }
+                const amount = parseFloat(args[0]);
+                if (isNaN(amount)) {
+                    console.log("Invalid amount.");
+                    break;
+                }
+                budgetManager.increaseBudget(amount);
+                budgetInfo = await budgetManager.getBudgetInfo();
+                console.log(`Budget increased by ${amount}. Total budget: ${JSON.stringify(budgetInfo)}`);
+                break;
+
+            case "budget-info":
+                budgetInfo = await budgetManager.getBudgetInfo();
+                console.log(`Budget info: ${JSON.stringify(budgetInfo)}`);
+                break;
+
+            case "transactions":
                 console.log("Sent Transactions:");
                 console.table(sentTransactions);
                 console.log("Trade Orders: TBD");

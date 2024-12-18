@@ -5,6 +5,16 @@ export class BudgetManager {
         this.mutex = new Mutex();
     }
 
+    async increaseBudget(additionalInc) {
+        await this.mutex.lock();
+        try {
+            this.availableBudget += additionalInc;
+            this.totalBudget += additionalInc;
+        } finally {
+            this.mutex.unlock();
+        }
+    }
+
     async allocateBudget(budgetNeededForStock) {
         await this.mutex.lock();
         try {

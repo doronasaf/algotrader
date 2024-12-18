@@ -23,6 +23,7 @@ export default function appConfig() {
             "provider2": "alpacaStream",
             "provider3": "backtesting",
             "google_sheets" : {
+                "maxSymbols": 25,
                 "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlm2IYtjYD783Gab4dWTRoerfrdMHrdRASxKT6nM9-oUThj57bPgSZyXNGCcL7KJol9LvxeYSJ0SrC/pub?output=csv"
             }
         }

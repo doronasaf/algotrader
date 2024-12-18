@@ -37,6 +37,9 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         this.takeProfitMultiplier = params.takeProfitMultiplier || 1.45; // ATR multiplier for take-profit - WAS 1.5
         this.stopLossMultiplier = params.stopLossMultiplier || 0.75; // ATR multiplier for stop-loss
 
+        this.takeProfitMaxPrecent = params.takeProfitMaxPrecent || 0.04 ; // maximum percent of take profit (4%)
+        this.stopLossMaxPercent = params.stopLossMaxPercent || 0.03; // maximum percent of stop loss (3%)
+
         this.lowRsiBearishThreshold = 40;
         this.highRsiBulishThreshold = 60;
     }
@@ -333,6 +336,10 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     evaluateMACD() {
         const { closes } = this.marketData;
         const macdValues = this.calculateMACD(closes);
+        if (!macdValues || macdValues.length === 0) {
+            appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Error: MACD calculation failed, not enough data`);
+            return -1;
+        }
         this.lastMACD = macdValues[macdValues.length - 1];
 
         if (this.lastMACD && this.lastMACD.MACD > this.lastMACD.signal) {
@@ -388,10 +395,17 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const atr = this.calculateATR(highs, lows, closes);
         const lastATR = atr[atr.length - 1];
         const vwap = this.calculateVWAP(highs, lows, closes, this.marketData.volumes);
+        const calculatedStopLoss = Math.min(entryPrice - this.stopLossMultiplier * lastATR, vwap);
+        const calculatedTakeProfit = entryPrice + this.takeProfitMultiplier * lastATR;
 
-        const stopLoss = Math.min(entryPrice - this.stopLossMultiplier * lastATR, vwap);
-        const takeProfit = entryPrice + this.takeProfitMultiplier * lastATR;
-
+        let stopLoss = Math.max(calculatedStopLoss, (1-this.stopLossMaxPercent) * entryPrice);
+        let takeProfit = Math.min(calculatedTakeProfit, (1+this.takeProfitMaxPrecent) * entryPrice);
+        if (stopLoss < calculatedStopLoss) {
+            appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Stop Loss adjusted from ${calculatedStopLoss} to ${stopLoss}`);
+        }
+        if (takeProfit > calculatedTakeProfit) {
+            appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Take Profit adjusted from ${calculatedTakeProfit} to ${takeProfit}`);
+        }
         return { stopLoss: parseFloat(stopLoss.toFixed(2)), takeProfit: parseFloat(takeProfit.toFixed(2)) };
     }
 
