@@ -1,9 +1,12 @@
-const getEntityLogger = require('./logger/loggerManager');
+// const getEntityLogger = require('./logger/loggerManager');
+// const appLogger = getEntityLogger('app');
+// const appConfig = require('../config/config.json');
+import {getEntityLogger} from './logger/loggerManager.mjs';
 const appLogger = getEntityLogger('app');
-const appConfig = require('../config/config.json');
+import appConfig from '../config/AppConfig.mjs';
+const appConf = appConfig();
 
-
-class TimerLog {
+export class TimerLog {
     constructor() {
         this.startTime = null;
         this.endTime = null;
@@ -16,7 +19,7 @@ class TimerLog {
      * @param {string} message - A message to log at the start of the timer.
      */
     start(message = 'Execution started') {
-        if (appConfig.app.DEBUG) {
+        if (appConf.app.DEBUG) {
             this.startTime = process.hrtime();
             this.logMessage = message;
             appLogger.info(`[START] ${message}`);
@@ -28,7 +31,7 @@ class TimerLog {
      * @param {string} message - A message to log at the end of the timer.
      */
     stop(message = 'Execution finished') {
-        if (appConfig.app.DEBUG) {
+        if (appConf.app.DEBUG) {
             if (!this.startTime) {
                 appLogger.info('[ERROR] Timer has not been started.');
                 return;
@@ -54,6 +57,6 @@ class TimerLog {
     }
 }
 
-module.exports = {
-    TimerLog
-}
+// module.exports = {
+//     TimerLog
+// }

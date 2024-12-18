@@ -1,5 +1,10 @@
-const { IBApi, EventName } = require('ib-tws-api'); // IBKR TWS API
-const { setTimeout } = require('timers/promises'); // Timer for delays
+// const { IBApi, EventName } = require('ib-tws-api'); // IBKR TWS API
+// const { setTimeout } = require('timers/promises'); // Timer for delays
+// import * as IBApiModule from 'ib-tws-api';
+import IBApi, { EventName } from 'ib-tws-api';
+
+
+// console.log(IBApiModule);
 
 const API = new IBApi();
 let isConnected = false;
@@ -23,7 +28,7 @@ API.on(EventName.disconnected, () => {
 
 // --------------------------------------
 // 1. Poll Order Status
-async function pollOrderStatus(orderId, interval = 3000) {
+export async function pollOrderStatus(orderId, interval = 3000) {
     try {
         while (true) {
             const order = await getOrderById(orderId);
@@ -45,7 +50,7 @@ async function pollOrderStatus(orderId, interval = 3000) {
 }
 
 // Helper Function: Get Order by ID
-function getOrderById(orderId) {
+export function getOrderById(orderId) {
     return new Promise((resolve) => {
         try {
             API.reqOpenOrders();
@@ -61,7 +66,7 @@ function getOrderById(orderId) {
 
 // --------------------------------------
 // 2. Get Open Orders
-async function getOrders() {
+export async function getOrders() {
     const orders = [];
     try {
         API.reqOpenOrders();
@@ -85,7 +90,7 @@ async function getOrders() {
 
 // --------------------------------------
 // 3. Fetch Real-Time Quote
-async function getQuote(symbol) {
+export async function getQuote(symbol) {
     const tickerId = 1; // Arbitrary ID
     try {
         return new Promise((resolve, reject) => {
@@ -121,7 +126,7 @@ async function getQuote(symbol) {
 
 // --------------------------------------
 // 4. Get Open Positions
-async function getOpenPositions() {
+export async function getOpenPositions() {
     const positions = [];
     try {
         API.reqPositions();
@@ -144,7 +149,7 @@ async function getOpenPositions() {
 
 // --------------------------------------
 // 5. Place Bracket Orders
-async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice) {
+export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice) {
     try {
         const parentOrderId = API.nextOrderId();
         const takeProfitOrderId = parentOrderId + 1;
@@ -199,10 +204,10 @@ async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPr
 
 // --------------------------------------
 // Module Export
-module.exports = {
-    pollOrderStatus,
-    getOrders,
-    getQuote,
-    getOpenPositions,
-    setBracketOrdersForBuy,
-};
+// module.exports = {
+//     pollOrderStatus,
+//     getOrders,
+//     getQuote,
+//     getOpenPositions,
+//     setBracketOrdersForBuy,
+// };

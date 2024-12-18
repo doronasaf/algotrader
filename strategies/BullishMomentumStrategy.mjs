@@ -1,6 +1,9 @@
-const {IMarketAnalyzer} = require("./IMarketAnalyzer");
-const {calculateIndicatorsExt} = require("../utils/TechUtils");
-const getEntityLogger = require('../utils/logger/loggerManager');
+// const {IMarketAnalyzer} = require("./IMarketAnalyzer");
+// const {calculateIndicatorsExt} = require("../utils/TechUtils");
+// const getEntityLogger = require('../utils/logger/loggerManager');
+import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
+import {calculateIndicatorsExt} from "../utils/TechUtils.mjs";
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 const logger = getEntityLogger('analytics');
 
 
@@ -10,7 +13,7 @@ const logger = getEntityLogger('analytics');
 // MACD Histogram > 0: Indicates upward momentum.
 // If both conditions are met, a buy signal is generated.
 
-class BullishMomentumStrategy extends IMarketAnalyzer {
+export class BullishMomentumStrategy extends IMarketAnalyzer {
     constructor(symbol, marketData, support, resistance, params) {
         super(symbol, marketData, support, resistance, params);
         // this.symbol = symbol;
@@ -131,6 +134,6 @@ class BullishMomentumStrategy extends IMarketAnalyzer {
 
 }
 
-module.exports =  {
-    BullishMomentumStrategy
-};
+// module.exports =  {
+//     BullishMomentumStrategy
+// };

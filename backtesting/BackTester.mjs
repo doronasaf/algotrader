@@ -3,11 +3,11 @@
 const datasetURL = '../dataset/360ONE_minute.csv';
 
 
-const fs = require('fs');
-const path = require('path');
-const readline = require('readline');
+import fs from 'fs';
+import path from 'path';
+import readline from 'readline';
 
-class MarketDataReader {
+export class MarketDataReader {
     constructor(dataFilePath) {
         this.dataFilePath = dataFilePath;
         this.watermarkFilePath = path.join(__dirname, 'watermark.json');
@@ -68,7 +68,7 @@ class MarketDataReader {
     }
 }
 
-const fetchMarketDataFromBackTester = async (symbol) => {
+export const fetchMarketDataFromBackTester = async (symbol) => {
     const dataFilePath = path.join(__dirname, datasetURL);
     const marketDataReader = new MarketDataReader(dataFilePath);
     let data = await marketDataReader.fetchMarketData();
@@ -95,6 +95,6 @@ const fetchMarketDataFromBackTester = async (symbol) => {
 // })();
 
 // 2015-02-03 09:15:00
-module.exports = {
-    fetchMarketDataFromBackTester,
-}
+// module.exports = {
+//     fetchMarketDataFromBackTester,
+// }

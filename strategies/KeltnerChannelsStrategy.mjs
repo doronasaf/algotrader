@@ -1,12 +1,16 @@
-const {EMA, ATR, RSI, MACD, BollingerBands} = require("technicalindicators");
-const getEntityLogger = require('../utils/logger/loggerManager');
-const {IMarketAnalyzer} = require("./IMarketAnalyzer");
+// const {EMA, ATR, RSI, MACD, BollingerBands} = require("technicalindicators");
+// const getEntityLogger = require('../utils/logger/loggerManager');
+// const {IMarketAnalyzer} = require("./IMarketAnalyzer");
+
+import {EMA, ATR, RSI, MACD, BollingerBands} from "technicalindicators";
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
+import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
 const logger = getEntityLogger('analytics');
 
 /**
  * Keltner Channels Strategy
  */
-class KeltnerChannelsStrategy extends IMarketAnalyzer{
+export class KeltnerChannelsStrategy extends IMarketAnalyzer{
     constructor(symbol, marketData, support, resistance, params, emaPeriod = 20, atrPeriod = 14, multiplier = 2) {
         super(symbol, marketData, support, resistance, params);
         this.symbol = symbol;
@@ -222,6 +226,6 @@ class KeltnerChannelsStrategy extends IMarketAnalyzer{
 
 }
 
-module.exports = {
-    KeltnerChannelsStrategy,
-};
+// module.exports = {
+//     KeltnerChannelsStrategy,
+// };

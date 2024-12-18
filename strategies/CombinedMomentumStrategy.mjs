@@ -1,9 +1,12 @@
-const { IMarketAnalyzer } = require('./IMarketAnalyzer');
-const { RSI, MACD, BollingerBands } = require('technicalindicators');
-const getEntityLogger = require('../utils/logger/loggerManager');
+// const { IMarketAnalyzer } = require('./IMarketAnalyzer');
+// const { RSI, MACD, BollingerBands } = require('technicalindicators');
+// const getEntityLogger = require('../utils/logger/loggerManager');
+import { IMarketAnalyzer } from './IMarketAnalyzer.mjs';
+import { RSI, MACD, BollingerBands } from 'technicalindicators';
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 const logger = getEntityLogger('analytics');
 
-class CombinedMomentumStrategy extends IMarketAnalyzer {
+export class CombinedMomentumStrategy extends IMarketAnalyzer {
     constructor(symbol, marketData, support, resistance, params) {
         super(symbol, marketData, support, resistance, params);
         this.rsiPeriod = 14
@@ -170,6 +173,6 @@ class CombinedMomentumStrategy extends IMarketAnalyzer {
     }
 }
 
-module.exports = {
-    CombinedMomentumStrategy,
-};
+// module.exports = {
+//     CombinedMomentumStrategy,
+// };

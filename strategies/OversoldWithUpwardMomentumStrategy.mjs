@@ -1,8 +1,12 @@
-const {IMarketAnalyzer} = require("./IMarketAnalyzer");
-const {calculateIndicatorsExt} = require("../utils/TechUtils");
-const getEntityLogger = require('../utils/logger/loggerManager');
-const logger = getEntityLogger('analytics');
+// const {IMarketAnalyzer} = require("./IMarketAnalyzer");
+// const {calculateIndicatorsExt} = require("../utils/TechUtils");
+// const getEntityLogger = require('../utils/logger/loggerManager');
+// const logger = getEntityLogger('analytics');
 
+import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
+import {calculateIndicatorsExt} from "../utils/TechUtils.mjs";
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
+const logger = getEntityLogger('analytics');
 
 // Signal Confirmation
 // Combines RSI and MACD for robust signal confirmation:
@@ -10,7 +14,7 @@ const logger = getEntityLogger('analytics');
 // MACD Histogram > 0: Indicates upward momentum.
 // If both conditions are met, a buy signal is generated.
 
-class OversoldWithUpwardMomentumStrategy extends IMarketAnalyzer {
+export class OversoldWithUpwardMomentumStrategy extends IMarketAnalyzer {
     constructor(symbol, marketData, support, resistance, params) {
         super(symbol, marketData, support, resistance, params);
         this.numberOfPrevVolumes = 20;
@@ -102,6 +106,6 @@ class OversoldWithUpwardMomentumStrategy extends IMarketAnalyzer {
     }
 }
 
-module.exports =  {
-    OversoldWithUpwardMomentumStrategy
-};
+// module.exports =  {
+//     OversoldWithUpwardMomentumStrategy
+// };

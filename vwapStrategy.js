@@ -1,5 +1,4 @@
-const axios = require("axios");
-const _ = require("lodash");
+import axios from "axios";
 
 async function fetchChartData(ticker) {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`;

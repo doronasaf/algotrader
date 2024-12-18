@@ -1,5 +1,6 @@
-require("dotenv").config();
-const Alpaca = require("@alpacahq/alpaca-trade-api");
+// import 'dotenv/config';
+// require("dotenv").config();
+import Alpaca from "@alpacahq/alpaca-trade-api";
 
 // Alpaca API configuration
 const alpaca = new Alpaca({
@@ -10,7 +11,7 @@ const alpaca = new Alpaca({
 });
 
 // Buy stock
-async function buyStock(symbol, quantity, type="market", limit_price) {
+export async function buyStock(symbol, quantity, type="market", limit_price) {
     const orderResult = {
         order: undefined,
         orderStatus: undefined
@@ -56,7 +57,7 @@ async function buyStock(symbol, quantity, type="market", limit_price) {
 }
 
 // Sell stock
-async function sellStock(symbol, quantity, type="market", limit_price) {
+export async function sellStock(symbol, quantity, type="market", limit_price) {
     const orderResult = {
         order: undefined,
         orderStatus: undefined
@@ -100,7 +101,7 @@ async function sellStock(symbol, quantity, type="market", limit_price) {
 
 }
 
-async function pollOrderStatus(orderId, interval = 3000) {
+export async function pollOrderStatus(orderId, interval = 3000) {
     let order;
     while (true) {
         order = await alpaca.getOrder(orderId);
@@ -151,7 +152,7 @@ async function pollOrderStatus(orderId, interval = 3000) {
 //     ]
 //   }
 // ]
-async function getOrders() {
+export async function getOrders() {
     const orderList = [];
     const orders = await alpaca.getOrders({
         status: 'open', // or 'all' for all orders including closed ones
@@ -184,7 +185,7 @@ async function getOrders() {
 }
 
 // Fetch real-time quote for a stock
-async function getQuote(symbol) {
+export async function getQuote(symbol) {
 
     try {
         const quote = await alpaca.getLatestQuote(symbol);
@@ -202,7 +203,7 @@ async function getQuote(symbol) {
     }
 }
 
-async function getOpenPositions() {
+export async function getOpenPositions() {
     try {
         const positions = await alpaca.getPositions();
         return positions; // Array of open positions
@@ -212,7 +213,7 @@ async function getOpenPositions() {
     }
 }
 
-async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice ) {
+export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice ) {
     const orderResult = {
         order: undefined,
         orderStatus: undefined
@@ -247,11 +248,11 @@ async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPr
 }
 
 
-module.exports = {
-    buyStock,
-    sellStock,
-    getQuote,
-    getOpenPositions,
-    setBracketOrdersForBuy,
-    getOrders
-};
+// module.exports = {
+//     buyStock,
+//     sellStock,
+//     getQuote,
+//     getOpenPositions,
+//     setBracketOrdersForBuy,
+//     getOrders
+// };

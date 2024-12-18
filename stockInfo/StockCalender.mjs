@@ -1,9 +1,9 @@
-const axios = require('axios');
+import axios from 'axios';
 
 const apiKey = 'ctb0tp9r01qgsps85v80ctb0tp9r01qgsps85v8g'; // Finnhub API key
 
 // Function to fetch earnings data for a specific date
-async function fetchEarnings(date) {
+export async function fetchEarnings(date) {
     const url = `https://finnhub.io/api/v1/calendar/earnings?from=${date}&to=${date}&token=${apiKey}`;
 
     try {
@@ -27,7 +27,7 @@ async function fetchEarnings(date) {
 }
 
 // Function to fetch sentiment for a given stock symbol
-async function fetchSentiment(symbol) {
+export async function fetchSentiment(symbol) {
     const url = `https://finnhub.io/api/v1/news-sentiment?symbol=${symbol}&token=${apiKey}`;
 
     try {
@@ -49,7 +49,7 @@ async function fetchSentiment(symbol) {
 }
 
 // Function to fetch earnings and sentiment data
-async function fetchEarningsAndSentiment(date) {
+export async function fetchEarningsAndSentiment(date) {
     const earnings = await fetchEarnings(date);
 
     for (const item of earnings) {
@@ -79,8 +79,8 @@ async function fetchEarningsAndSentiment(date) {
 //     await fetchEarnings(date);
 // })();
 
-module.exports = {
-    fetchEarnings,
-    fetchSentiment,
-    fetchEarningsAndSentiment
-}
+// module.exports = {
+//     fetchEarnings,
+//     fetchSentiment,
+//     fetchEarningsAndSentiment
+// }

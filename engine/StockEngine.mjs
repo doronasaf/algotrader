@@ -1,13 +1,22 @@
-const getEntityLogger = require('../utils/logger/loggerManager');
-const { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} = require("../broker/alpaca/tradeService");
-const { MarketAnalyzerFactory, TradingStrategy } = require("../strategies/MarketAnalyzerFactory");
-const { fetchMarketData } = require("../broker/MarketDataFetcher");
-const {tradingConfig, isWithinTradingHours} = require("../utils/TradingHours");
-const {identifyStocks} = require("../stockInfo/StocksSelector");
-const {fetchEarnings} = require("../stockInfo/StockCalender");
+// const getEntityLogger = require('../utils/logger/loggerManager');
+// const { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} = require("../broker/alpaca/tradeService");
+// const { MarketAnalyzerFactory, TradingStrategy } = require("../strategies/MarketAnalyzerFactory");
+// const { fetchMarketData } = require("../broker/MarketDataFetcher");
+// const {tradingConfig, isWithinTradingHours} = require("../utils/TradingHours");
+// const {identifyStocks} = require("../stockInfo/StocksSelector");
+// const {fetchEarnings} = require("../stockInfo/StockCalender");
+// const logger = getEntityLogger('transactions');
+// const analytics = getEntityLogger('analytics');
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
+import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders } from "../broker/alpaca/tradeService.mjs";
+import { MarketAnalyzerFactory, TradingStrategy } from "../strategies/MarketAnalyzerFactory.mjs";
+import { fetchMarketData } from "../broker/MarketDataFetcher.mjs";
+import { tradingConfig, isWithinTradingHours} from "../utils/TradingHours.mjs";
+import { identifyStocks} from "../stockInfo/StocksSelector.mjs";
+import { fetchEarnings} from "../stockInfo/StockCalender.mjs";
+
 const logger = getEntityLogger('transactions');
 const analytics = getEntityLogger('analytics');
-
 const DEBUG = false;
 
 
@@ -125,7 +134,7 @@ const selectStocks = async (maxNumberOfStocks) => {
     return combinedList.slice(0,numberOfStocks); // maximum 9 stocks
 }
 // Main function
-const main = async () => {
+export const main = async () => {
 
     const param = {
         capital: 3000, // Initial capital in USD

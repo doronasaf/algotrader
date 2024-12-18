@@ -1,17 +1,35 @@
-const getEntityLogger = require('../utils/logger/loggerManager');
-const appConfig = require('../config/config.json');
-const { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} = require("../broker/alpaca/tradeService");
-const { MarketAnalyzerFactory, TradingStrategy } = require("../strategies/MarketAnalyzerFactory");
-const { fetchMarketData } = require("../broker/MarketDataFetcher");
-const {tradingConfig, isWithinTradingHours} = require("../utils/TradingHours");
-const {identifyStocks} = require("../stockInfo/StocksSelector");
-const {fetchEarnings} = require("../stockInfo/StockCalender");
+// const getEntityLogger = require('../utils/logger/loggerManager');
+// const appConfig = require('../config/config.json');
+// const { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} = require("../broker/alpaca/tradeService");
+// const { MarketAnalyzerFactory, TradingStrategy } = require("../strategies/MarketAnalyzerFactory");
+// const { fetchMarketData } = require("../broker/MarketDataFetcher");
+// const {tradingConfig, isWithinTradingHours} = require("../utils/TradingHours");
+// const {identifyStocks} = require("../stockInfo/StocksSelector");
+// const {fetchEarnings} = require("../stockInfo/StockCalender");
+// const transactionLog = getEntityLogger('transactions');
+// const analyticsLog = getEntityLogger('analytics');
+// const appLog = getEntityLogger('app');
+// const readline = require("readline");
+// const {TimerLog} = require("../utils/TimerLog");
+// const { fetchCSV } = require('../stockInfo/GoogleSheetStockSelector');
+
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
+import appConfig from '../config/AppConfig.mjs';
+import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
+import { MarketAnalyzerFactory, TradingStrategy } from "../strategies/MarketAnalyzerFactory.mjs";
+import { fetchMarketData } from "../broker/MarketDataFetcher.mjs";
+import {tradingConfig, isWithinTradingHours} from "../utils/TradingHours.mjs";
+import {identifyStocks} from "../stockInfo/StocksSelector.mjs";
+import {fetchEarnings} from "../stockInfo/StockCalender.mjs";
+import readline from "readline";
+import {TimerLog} from "../utils/TimerLog.mjs";
+import { fetchCSV } from '../stockInfo/GoogleSheetStockSelector.mjs';
+import {nyseTime} from "../utils/TimeFormatting.mjs";
+
+const appConf = appConfig();
 const transactionLog = getEntityLogger('transactions');
 const analyticsLog = getEntityLogger('analytics');
 const appLog = getEntityLogger('app');
-const readline = require("readline");
-const {TimerLog} = require("../utils/TimerLog");
-const { fetchCSV } = require('../stockInfo/GoogleSheetStockSelector');
 
 const workers = new Map(); // Map to track workers by stock symbol {symbol: {worker, params}}
 const stopFlags = new Map(); // Map to track stop flags by stock symbol
@@ -20,9 +38,10 @@ const tradeOrders = [];
 const strategyTypes = Object.values(TradingStrategy);
 let running = true; // Flag to control engine status
 
-let budget = appConfig.trading.budget; // Total budget available
+
+let budget = appConf.trading.budget; // Total budget available
 let allocatedBudget = 0; // Budget currently allocated to active workers
-const defTradingParams = { capital: appConfig.trading.singleTradeCapital, takeProfit: appConfig.trading.takeProfit, stopLoss: appConfig.trading.stopLoss }; // Default parameters
+const defTradingParams = { capital: appConf.trading.singleTradeCapital, takeProfit: appConf.trading.takeProfit, stopLoss: appConf.trading.stopLoss }; // Default parameters
 
 
 const analyzeEnhancedStrategy = async (ticker, params) => {
@@ -31,7 +50,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     let phase = "A"; // Start with Accumulation
     let capital = params.capital; // Initial capital
     let position = 0; // Number of shares held
-    const regularInterval = appConfig.app.disableTrading ? appConfig.dataSource.testFetchInterval : appConfig.dataSource.fetchInterval;//2000;
+    const regularInterval = appConf.app.disableTrading ? appConf.dataSource.testFetchInterval : appConf.dataSource.fetchInterval;//2000;
     const monitoringInterval = 60000;
     let timeoutInterval = regularInterval;
     const timerLog = new TimerLog();
@@ -117,17 +136,20 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         // const shares = Math.floor(capital / close);
                         position += shares;
                         capital -= shares * close;
-                        if (appConfig.app.disableTrading === true) {
+                        if (appConf.app.disableTrading === true) {
                             analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
+                            let trx = {ticker, source: params.source, action: "BUY", price: close, timestamp: nyseTime(), shares, takeProfit, stopLoss, potentialGain: (takeProfit - close) * shares, potentialLoss: (close - stopLoss) * shares, status: "Demo"};
+                            transactionLog.info(JSON.stringify(trx));
+                            sentTransactions.push(trx);
                             phase = "C"; // Skip execution monitoring
                             break;
                         }
                         const orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
                         // const orderResult = await buyStock(ticker, shares, "limit", close);
                         orderResult.strategy = selectedAnalyzer.toString();
-                        transactionLog.info(`Ticker ${ticker} | Buy Order: Shares = ${shares}, Buy Price = ${close}, TP = ${takeProfit}, SL = ${stopLoss}`);
+                        transactionLog.info(`Ticker ${ticker} | Source: ${params.source} Buy Order: Shares = ${shares}, Buy Price = ${close}, TP = ${takeProfit}, SL = ${stopLoss}`);
 
-                        await writeToLog(ticker, close, shares, capital, orderResult, "bracket", "BUY", tradeOrders, sentTransactions);
+                        await writeToLog(ticker, close, shares, capital, orderResult, "bracket", "BUY", tradeOrders, sentTransactions, params.source);
                         timeoutInterval = monitoringInterval;
                         phase = "E"; // Move to Execution Monitoring
                     } else if (breakoutConfirmed === 0) {
@@ -172,10 +194,10 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     }
 };
 
-const writeToLog = async (ticker, close, sharesOrSellValue, capital, orderResult, action, status, tradeOrders, sentTransactions) => {
+const writeToLog = async (ticker, close, sharesOrSellValue, capital, orderResult, action, status, tradeOrders, sentTransactions, source) => {
     tradeOrders.push(orderResult.order);
     tradeOrders.push(orderResult.orderStatus);
-    sentTransactions.push({ ticker, action: action, price: close, timestamp: new Date(), sharesOrSellValue, status: status , strategy: orderResult.strategy});
+    sentTransactions.push({ ticker, source, action: action, price: close, timestamp: new Date(), sharesOrSellValue, status: status , strategy: orderResult.strategy});
 }
 
 const selectStocks = async (maxNumberOfStocks) => {
@@ -313,14 +335,14 @@ const startCLI = () => {
 
             case "refresh-ext-stocks":
                 console.log("Refresh from google sheets");
-                let stockList = await fetchCSV(appConfig.dataSource.google_sheets.url);
+                let stockList = await fetchCSV(appConf.dataSource.google_sheets.url);
                 stockList.splice(15)
                 for (let i=0; i< stockList.length; i++) {
                     if (!stockList[i][0]) continue;
                     const symbol = stockList[i][0];
                     const strategy = stockList[i][1];
                     let strategyType = TradingStrategy.TrendMomentumBreakoutStrategy;
-                    tryRunWorker({symbol}, strategyType);
+                    tryRunWorker({symbol, source: "google_sheet"}, strategyType);
                 }
                 break;
 
@@ -366,7 +388,7 @@ function tryRunWorker (stockCandidate, strategyType) {
     if (!workers.has(symbol)) {
 
         console.log(`Spawning worker for ${symbol}`);
-        const params = { ticker: symbol, type: strategyType, ...defTradingParams }; // Default parameters
+        const params = { ticker: symbol, type: strategyType, source: stockCandidate.source, ...defTradingParams }; // Default parameters
         const worker = createWorker(symbol, params);
         workers.set(symbol, { worker, params });
         stopFlags.set(symbol, false); // Initialize stop flag
@@ -379,10 +401,11 @@ function tryRunWorker (stockCandidate, strategyType) {
 
 const engine = async () => {
     try {
+        const maxStockToFetch = appConf.stockSelector.maxNumberOfStocks;
         while (running) {
             if (workers.size === 0) {
-                let stockCandidates = await selectStocks(10); // Fetch max 10 stocks
-                // let stockCandidates=[];//zzzzzzzz
+
+                let stockCandidates = await selectStocks(maxStockToFetch); // Fetch max 10 stocks
                 for (let i = 0; i < stockCandidates.length; i++) {
                     const stockCandidate = stockCandidates[i];
                     let strategyType = strategyTypes[i % strategyTypes.length];
@@ -402,10 +425,10 @@ const engine = async () => {
 /**
  * Main Function
  */
-const main = async () => {
+export async function main() {
     console.log("Starting engine...");
     startCLI(); // Start the CLI interface
     await engine(); // Start the engine
-};
+}
 
-module.exports = { main };
+// module.exports = { main };

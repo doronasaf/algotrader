@@ -1,9 +1,9 @@
-const axios = require("axios");
+import axios from "axios";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Fetch real-time market data
-async function fetchMarketData(ticker) {
+export async function fetchMarketData(ticker) {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`;
     while (true) {
         try {
@@ -50,6 +50,10 @@ async function fetchMarketData(ticker) {
     }
 }
 
-module.exports = {
-    fetchMarketDataFromYahoo: fetchMarketData,
-};
+export async function fetchMarketDataFromYahoo (ticker) {
+    return await fetchMarketData(ticker);
+}
+
+// module.exports = {
+//     fetchMarketDataFromYahoo: fetchMarketData,
+// };

@@ -1,8 +1,14 @@
-const yahooFinance = require('yahoo-finance2').default;
-const {calculateIndicatorsExt} = require("../utils/TechUtils");
-const getEntityLogger = require('../utils/logger/loggerManager');
+// const yahooFinance = require('yahoo-finance2').default;
+// const {calculateIndicatorsExt} = require("../utils/TechUtils");
+// const getEntityLogger = require('../utils/logger/loggerManager');
+// const logger = getEntityLogger('analytics');
+// const appConfig = require('../config/config.json');
+
+import yahooFinance from 'yahoo-finance2';
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
+
 const logger = getEntityLogger('analytics');
-const appConfig = require('../config/config.json');
+import appConfig from '../config/AppConfig.mjs';
 // Algorithm Overview
 // 1. Identify Stocks with Potential for 4–5% Intraday Range
 // This step involves assessing historical and pre-market movement.
@@ -25,10 +31,11 @@ const appConfig = require('../config/config.json');
 
 // TODO: For long term, nalyze stocks for period of month
 
-const atrThreshold = appConfig.stockSelector.atrThreshold;
-const chartHistoryInDays = appConfig.stockSelector.chartHistoryInDays;
+const appConf = appConfig();
+const atrThreshold = appConf.stockSelector.atrThreshold;
+const chartHistoryInDays = appConf.stockSelector.chartHistoryInDays;
 
-const identifyStocks = async (todaysEarningStocks) => {
+export async function identifyStocks (todaysEarningStocks) {
     const candidates = [];
     try {
         const earningStocksMap = {};
@@ -103,6 +110,7 @@ const identifyStocks = async (todaysEarningStocks) => {
                                 symbol,
                                 atrPercentage,
                                 preMarketChange: theChange.toFixed(2),
+                                source: earningStocksMap[symbol] ? 'Earning' : 'Trending',
                             });
                         }
                     }
@@ -132,11 +140,11 @@ function formatMarketCap(marketCap) {
 }
 
 
-// implement the iffy pattern to run the function
-(async () => {
-    await identifyStocks();
-})();
-
-module.exports = {
-    identifyStocks,
-}
+// // implement the iffy pattern to run the function
+// (async () => {
+//     await identifyStocks();
+// })();
+//
+// module.exports = {
+//     identifyStocks,
+// }

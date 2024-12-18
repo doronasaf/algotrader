@@ -1,7 +1,7 @@
-const { macd, rsi } = require("technicalindicators"); // Install with `npm install technicalindicators`
+import { macd, rsi } from "technicalindicators"; // Install with `npm install technicalindicators`
 
 
-function calculateIndicatorsExt(data, macdFastEMA, macdSlowEMA, macdSignalEMA, rsiPeriod) {
+export function calculateIndicatorsExt(data, macdFastEMA, macdSlowEMA, macdSignalEMA, rsiPeriod) {
     const params = {
         macdFastEMA,
         macdSlowEMA,
@@ -13,7 +13,7 @@ function calculateIndicatorsExt(data, macdFastEMA, macdSlowEMA, macdSignalEMA, r
 
 
 // Calculate MACD and RSI
-function calculateIndicators(data, params) {
+export function calculateIndicators(data, params) {
     const closes = data.closes;
 
     // Recommended Parameters for Moving from A to B
@@ -48,7 +48,7 @@ function calculateIndicators(data, params) {
     };
 }
 
-module.exports = {
-    calculateIndicators,
-    calculateIndicatorsExt,
-};
+// module.exports = {
+//     calculateIndicators,
+//     calculateIndicatorsExt,
+// };

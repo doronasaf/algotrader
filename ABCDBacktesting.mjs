@@ -1,5 +1,5 @@
-const axios = require("axios");
-const fs = require("fs");
+import axios from "axios";
+import fs from "fs";
 
 // Fetch historical data
 async function fetchHistoricalData(ticker, historyInDays) {

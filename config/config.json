@@ -5,6 +5,7 @@
     "DEBUG": true
   },
   "stockSelector": {
+    "maxNumberOfStocks": 1,
     "atrThreshold": 2.5,
     "chartHistoryInDays": 5
   },

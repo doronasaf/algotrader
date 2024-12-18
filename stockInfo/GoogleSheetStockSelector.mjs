@@ -1,7 +1,7 @@
-const config = require("../config/config.json");
-const axios = require("axios");
+import appConfig from "../config/AppConfig.mjs";
+import axios from "axios";
 
-async function fetchCSV(url) {
+export async function fetchCSV(url) {
     try {
         const response = await axios.get(url);
         const rows = response.data.split("\n").map((row) => row.split(","));
@@ -25,6 +25,6 @@ async function fetchCSV(url) {
 //     console.log(JSON.stringify(lll));
 // })()
 
-module.exports = {
-    fetchCSV,
-}
+// module.exports = {
+//     fetchCSV,
+// }

@@ -1,11 +1,17 @@
-const { EMA, RSI, ATR, VWAP, MACD, BollingerBands, Supertrend } = require('technicalindicators');
-const {IMarketAnalyzer} = require("./IMarketAnalyzer");
-const getEntityLogger = require('../utils/logger/loggerManager');
+// const { EMA, RSI, ATR, VWAP, MACD, BollingerBands, Supertrend } = require('technicalindicators');
+// const {IMarketAnalyzer} = require("./IMarketAnalyzer");
+// const getEntityLogger = require('../utils/logger/loggerManager');
+// const analyticsLogger = getEntityLogger('analytics');
+// const appLogger = getEntityLogger('app');
+
+import { EMA, RSI, ATR, VWAP, MACD, BollingerBands } from 'technicalindicators';
+import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 const analyticsLogger = getEntityLogger('analytics');
 const appLogger = getEntityLogger('app');
 
 
-class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
+export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     constructor(symbol, marketData, support, resistance, params) {
         super(symbol, marketData, support, resistance, params);
         this.marketData = marketData; // { closes, highs, lows, volumes }
@@ -28,7 +34,7 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         this.supertrendMultiplier = params.supertrendMultiplier || 3;
         this.cmfPeriod = params.cmfPeriod || 20;
 
-        this.takeProfitMultiplier = params.takeProfitMultiplier || 1.5; // ATR multiplier for take-profit
+        this.takeProfitMultiplier = params.takeProfitMultiplier || 1.45; // ATR multiplier for take-profit - WAS 1.5
         this.stopLossMultiplier = params.stopLossMultiplier || 0.75; // ATR multiplier for stop-loss
 
         this.lowRsiBearishThreshold = 40;
@@ -459,6 +465,6 @@ class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     }
 }
 
-module.exports = {
-    TrendMomentumBreakoutStrategy,
-};
+// module.exports = {
+//     TrendMomentumBreakoutStrategy,
+// };

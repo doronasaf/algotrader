@@ -1,11 +1,18 @@
-const {BullishMomentumStrategy} = require("./BullishMomentumStrategy");
-const {OversoldWithUpwardMomentumStrategy} = require("./OversoldWithUpwardMomentumStrategy");
-const {CombinedMomentumStrategy} = require("./CombinedMomentumStrategy");
-const {CombinedMomentumWithWeightsStrategy} = require("./CombinedMomentumWithWeightsStrategy");
-const {KeltnerChannelsStrategy} = require("./KeltnerChannelsStrategy");
-const {TrendMomentumBreakoutStrategy} = require("./TrendMomentumBreakoutStrategy");
+// const {BullishMomentumStrategy} = require("./BullishMomentumStrategy");
+// const {OversoldWithUpwardMomentumStrategy} = require("./OversoldWithUpwardMomentumStrategy");
+// const {CombinedMomentumStrategy} = require("./CombinedMomentumStrategy");
+// const {CombinedMomentumWithWeightsStrategy} = require("./CombinedMomentumWithWeightsStrategy");
+// const {KeltnerChannelsStrategy} = require("./KeltnerChannelsStrategy");
+// const {TrendMomentumBreakoutStrategy} = require("./TrendMomentumBreakoutStrategy");
 
-const TradingStrategy = {
+import {BullishMomentumStrategy} from "./BullishMomentumStrategy.mjs";
+import {OversoldWithUpwardMomentumStrategy} from "./OversoldWithUpwardMomentumStrategy.mjs";
+import {CombinedMomentumStrategy} from "./CombinedMomentumStrategy.mjs";
+import {CombinedMomentumWithWeightsStrategy} from "./CombinedMomentumWithWeightsStrategy.mjs";
+import {KeltnerChannelsStrategy} from "./KeltnerChannelsStrategy.mjs";
+import {TrendMomentumBreakoutStrategy} from "./TrendMomentumBreakoutStrategy.mjs";
+
+export const TradingStrategy = {
     TrendMomentumBreakoutStrategy: "TrendMomentumBreakoutStrategy",
     // CombinedWithWeightMomentum : "CombinedMomentumWithWeightsStrategy",
     // CombinedMomentum : "CombinedMomentumStrategy",
@@ -15,7 +22,7 @@ const TradingStrategy = {
 };
 
 
-class MarketAnalyzerFactory {
+export class MarketAnalyzerFactory {
     static createAnalyzer(tradingStrategy, symbol, marketData, support, resistance, params) {
         switch (tradingStrategy) {
             case TradingStrategy.BullishMomentum:
@@ -36,7 +43,7 @@ class MarketAnalyzerFactory {
     }
 }
 
-module.exports =  {
-    MarketAnalyzerFactory,
-    TradingStrategy,
-};
+// module.exports =  {
+//     MarketAnalyzerFactory,
+//     TradingStrategy,
+// };

@@ -1,12 +1,15 @@
-const config = require('../config/config.json');
-const { fetchMarketDataFromYahoo } = require("../broker/yahoo/quoteService");
-const { fetchMarketDataFromAlpaca, handleQuoteUpdate } = require("../broker/alpaca/quoteService");
-const { fetchMarketDataFromBackTester } = require("../backtesting/BackTester");
+// const config = require('../config/config.json');
+// const { fetchMarketDataFromYahoo } = require("../broker/yahoo/quoteService");
+// const { fetchMarketDataFromAlpaca, handleQuoteUpdate } = require("../broker/alpaca/quoteService");
+// const { fetchMarketDataFromBackTester } = require("../backtesting/BackTester");
+import appConfig from '../config/AppConfig.mjs';
+import { fetchMarketDataFromYahoo } from "./yahoo/quoteService.mjs";
+import { fetchMarketDataFromAlpaca, handleQuoteUpdate } from "./alpaca/quoteService.mjs";
+import { fetchMarketDataFromBackTester } from "../backtesting/BackTester.mjs";
 
+const mode = appConfig().dataSource.provider; // 'yahoo' or 'alpacaStream' or backtesting
 
-const mode = config.dataSource.provider; // 'yahoo' or 'alpacaStream' or backtesting
-
-const fetchMarketData = async (symbol) => {
+export async function fetchMarketData (symbol) {
     let closes, highs, lows, volumes, update;
     let marketData;
     if (mode === 'alpacaStream') {
@@ -62,6 +65,6 @@ function marketDataIsValid(marketData) {
     return dataIsValid;
 }
 
-module.exports = {
-    fetchMarketData,
-}
+// module.exports = {
+//     fetchMarketData,
+// }

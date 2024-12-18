@@ -1,4 +1,4 @@
-const axios = require("axios");
+import axios from "axios";
 
 // Fetch historical data
 async function fetchHistoricalData(ticker, historyInDays) {

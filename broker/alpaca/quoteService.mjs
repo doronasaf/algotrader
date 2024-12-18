@@ -1,4 +1,4 @@
-const WebSocket = require('ws');
+import WebSocket from 'ws';
 
 // Alpaca API Key and Secret
 const API_KEY = process.env.ALPACA_API_KEY || 'PKNLI3BZGX8M03HC0VKO';
@@ -9,10 +9,10 @@ const FEED = "iex"; // Can be "sip" (paid) or "iex"
 const WEBSOCKET_URL = `wss://stream.data.alpaca.markets/v2/${FEED}`; // production url
 // const WEBSOCKET_URL = `wss://stream.data.sandbox.alpaca.markets/v2/${FEED}`; // sandbox url
 
-let isConnected = false;
+export let isConnected = false;
 
 // Function to start a WebSocket connection
-function startStreaming(ticker, onQuoteUpdate) {
+export function fetchMarketDataFromAlpaca(ticker, onQuoteUpdate) {
     const ws = new WebSocket(WEBSOCKET_URL);
 
     ws.on('open', () => {
@@ -116,7 +116,7 @@ class OHLCBuffer {
 
 const ohlcBuffer = new OHLCBuffer(100);
 
-function handleQuoteUpdate(update) {
+export function handleQuoteUpdate(update) {
     if (!update || !update.type) {
         console.warn("Invalid update received.");
         return null;
@@ -196,8 +196,8 @@ function handleQuoteUpdate(update) {
 //         // Process the update (e.g., analyze, log, or store it)
 // }
 
-module.exports = {
-    fetchMarketDataFromAlpaca: startStreaming,
-    handleQuoteUpdate,
-    isConnected,
-}
+// module.exports = {
+//     fetchMarketDataFromAlpaca: startStreaming,
+//     handleQuoteUpdate,
+//     isConnected,
+// }

@@ -1,12 +1,10 @@
-'use strict';
+// 'use strict';
 
-const trade = require('./engine/StockEngineNew');
+import {main}  from "./engine/StockEngineNew.mjs";
 
-// async block to run the trading script
 (async () => {
     try {
-        await trade.main();
-        // await trade.testPlaceOrder("AAPL", 5, 'sell');
+        await main();
     } catch (error) {
         console.error("Error running trading script:", error.stack);
     }

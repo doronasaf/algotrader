@@ -1,4 +1,4 @@
-const axios = require("axios");
+import axios from "axios";
 
 // Define market hours (Eastern Time for NYSE)
 const tradingConfig = {

@@ -1,11 +1,11 @@
-const { IBApi, EventName, IBApiNextError } = require('ib-tws-api');
+import { IBApi, EventName, IBApiNextError } from 'ib-tws-api';
 
 // Define the WebSocket equivalent for IBKR
 const API = new IBApi();
 let isConnected = false;
 
 // Function to start a streaming connection
-function startStreaming(ticker, onQuoteUpdate) {
+export function startStreaming(ticker, onQuoteUpdate) {
     // Connect to the IBKR TWS/Gateway
     API.connect('127.0.0.1', 7496, 1);
 
@@ -75,7 +75,7 @@ function startStreaming(ticker, onQuoteUpdate) {
 }
 
 // Buffer for OHLC data
-class OHLCBuffer {
+export class OHLCBuffer {
     constructor(maxSize = 100) {
         this.data = [];
         this.maxSize = maxSize;
@@ -95,7 +95,7 @@ class OHLCBuffer {
 
 const ohlcBuffer = new OHLCBuffer(100);
 
-function handleQuoteUpdate(update) {
+export function handleQuoteUpdate(update) {
     if (!update || !update.type) {
         console.warn('Invalid update received.');
         return null;
@@ -139,8 +139,8 @@ function handleQuoteUpdate(update) {
     return ohlcBuffer.getAll(); // Return the last 100 data points
 }
 
-module.exports = {
-    startStreaming,
-    handleQuoteUpdate,
-    isConnected,
-};
+// module.exports = {
+//     startStreaming,
+//     handleQuoteUpdate,
+//     isConnected,
+// };
