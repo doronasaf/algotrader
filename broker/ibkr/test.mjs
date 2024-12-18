@@ -25,8 +25,6 @@
 //     console.log('Open Positions:', positions);
 // })();
 
-
-
 import { Client, Contract } from 'ib-tws-api';
 
 async function streamMarketData() {
@@ -53,4 +51,5 @@ async function streamMarketData() {
     }
 }
 
-streamMarketData();
+// streamMarketData();
+

@@ -6,7 +6,7 @@ export default function appConfig() {
             "DEBUG": true
         },
         "stockSelector": {
-            "maxNumberOfStocks": 1,
+            "maxNumberOfStocks": 10,
             "atrThreshold": 2.5,
             "chartHistoryInDays": 5
         },

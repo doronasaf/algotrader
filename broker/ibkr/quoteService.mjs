@@ -1,78 +1,9 @@
-import { IBApi, EventName, IBApiNextError } from 'ib-tws-api';
+// import { IBApi, EventName, IBApiNextError } from 'ib-tws-api';
+import axios from 'axios'; // Assuming you use axios for HTTP requests
 
 // Define the WebSocket equivalent for IBKR
-const API = new IBApi();
 let isConnected = false;
 
-// Function to start a streaming connection
-export function startStreaming(ticker, onQuoteUpdate) {
-    // Connect to the IBKR TWS/Gateway
-    API.connect('127.0.0.1', 7496, 1);
-
-    API.on(EventName.connected, () => {
-        console.log('Connected to IBKR');
-        isConnected = true;
-
-        // Request market data for the given ticker
-        API.reqMktData(1, {
-            symbol: ticker,
-            secType: 'STK', // Stock
-            exchange: 'SMART', // Smart Routing
-            currency: 'USD', // USD Currency
-        }, '', false, false, []);
-
-        console.log(`Subscribed to real-time data for ${ticker}`);
-    });
-
-    API.on(EventName.marketData, (tickerId, tickType, value) => {
-        // Process different types of market data updates
-        const update = {};
-
-        switch (tickType) {
-            case 1: // Bid Price
-                update.type = 'quote';
-                update.bidPrice = value;
-                break;
-            case 2: // Ask Price
-                update.type = 'quote';
-                update.askPrice = value;
-                break;
-            case 4: // Last Trade Price
-                update.type = 'trade';
-                update.price = value;
-                break;
-            case 5: // High Price
-                update.high = value;
-                break;
-            case 6: // Low Price
-                update.low = value;
-                break;
-            default:
-                console.log(`Unhandled tick type: ${tickType}`);
-        }
-
-        // Add timestamp and symbol to the update
-        update.symbol = ticker;
-        update.timestamp = new Date().toISOString();
-
-        // Pass the update to the callback
-        onQuoteUpdate(update);
-    });
-
-    API.on(EventName.error, (error) => {
-        console.error('Error:', error.message || error);
-    });
-
-    API.on(EventName.disconnected, () => {
-        console.log('Disconnected from IBKR');
-        isConnected = false;
-
-        // Optionally, reconnect after a delay
-        setTimeout(() => startStreaming(ticker, onQuoteUpdate), 5000);
-    });
-
-    return API;
-}
 
 // Buffer for OHLC data
 export class OHLCBuffer {
@@ -139,8 +70,74 @@ export function handleQuoteUpdate(update) {
     return ohlcBuffer.getAll(); // Return the last 100 data points
 }
 
-// module.exports = {
-//     startStreaming,
-//     handleQuoteUpdate,
-//     isConnected,
-// };
+
+// Fetch delayed market data for a given ticker
+/** fetchMarketData
+ * Fetches delayed market data for a given ticker.
+ * Returns an object with the following properties:
+ * - timestamps: array of timestamps
+ * - volumes: array of volumes
+ * - highs: array of highs
+ * - lows: array of lows
+ * - closes: array of closes
+ *
+ * @param {string} ticker - The ticker symbol (e.g., "AAPL").
+ * @returns {Promise<{timestamps: *, volumes: *, highs: *, lows: *, closes: *} | null>}
+ */
+export async function fetchMarketData(ticker) {
+    const IBKR_API_BASE_URL = 'http://localhost:5000/v1/api';
+    try {
+        // Step 1: Resolve the conid for the ticker
+        const searchResponse = await axios.post(`${IBKR_API_BASE_URL}/iserver/secdef/search`, {
+            symbol: ticker,
+        });
+        const conid = searchResponse.data[0]?.conid;
+        if (!conid) throw new Error(`Could not resolve conid for ticker: ${ticker}`);
+
+        // Step 2: Fetch delayed market data
+        const response = await axios.get(`${IBKR_API_BASE_URL}/iserver/marketdata/snapshot`, {
+            params: { conid, fields: '31' }, // `31` is for delayed data
+            timeout: 5000,
+        });
+
+        // Step 3: Parse and return data
+        const bars = response.data;
+        if (!bars || !bars.length) throw new Error('No market data returned');
+
+        const timestamps = bars.map((bar) => bar.time);
+        const volumes = bars.map((bar) => bar.volume);
+        const highs = bars.map((bar) => bar.high);
+        const lows = bars.map((bar) => bar.low);
+        const closes = bars.map((bar) => bar.close);
+
+        return { timestamps, volumes, highs, lows, closes };
+    } catch (error) {
+        console.error('Error fetching market data:', error.message);
+        return null;
+    }
+}
+
+
+import { Client, Contract, Order } from 'ib-tws-api';
+
+async function run() {
+    let api = new Client({
+        host: '127.0.0.1',
+        port: 4002
+    });
+
+    let details = await api.getHistoricalData({
+        contract: Contract.stock('AAPL'),
+        endDateTime: '20241217 17:59:59 US/Eastern',
+        duration: '1 D',
+        barSizeSetting: '1 min',
+        whatToShow: 'TRADES',
+        formatDate: 1,
+        useRth: 1
+    });
+    console.log(details);
+}
+
+(async () => {
+    await run();
+})();

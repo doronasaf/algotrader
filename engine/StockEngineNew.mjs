@@ -1,18 +1,3 @@
-// const getEntityLogger = require('../utils/logger/loggerManager');
-// const appConfig = require('../config/config.json');
-// const { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} = require("../broker/alpaca/tradeService");
-// const { MarketAnalyzerFactory, TradingStrategy } = require("../strategies/MarketAnalyzerFactory");
-// const { fetchMarketData } = require("../broker/MarketDataFetcher");
-// const {tradingConfig, isWithinTradingHours} = require("../utils/TradingHours");
-// const {identifyStocks} = require("../stockInfo/StocksSelector");
-// const {fetchEarnings} = require("../stockInfo/StockCalender");
-// const transactionLog = getEntityLogger('transactions');
-// const analyticsLog = getEntityLogger('analytics');
-// const appLog = getEntityLogger('app');
-// const readline = require("readline");
-// const {TimerLog} = require("../utils/TimerLog");
-// const { fetchCSV } = require('../stockInfo/GoogleSheetStockSelector');
-
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
@@ -25,6 +10,7 @@ import readline from "readline";
 import {TimerLog} from "../utils/TimerLog.mjs";
 import { fetchCSV } from '../stockInfo/GoogleSheetStockSelector.mjs';
 import {nyseTime} from "../utils/TimeFormatting.mjs";
+import {BudgetManager}   from "../utils/BudgetManager.jsm.js";
 
 const appConf = appConfig();
 const transactionLog = getEntityLogger('transactions');
@@ -37,10 +23,7 @@ const sentTransactions = []; // Array to store all transactions
 const tradeOrders = [];
 const strategyTypes = Object.values(TradingStrategy);
 let running = true; // Flag to control engine status
-
-
-let budget = appConf.trading.budget; // Total budget available
-let allocatedBudget = 0; // Budget currently allocated to active workers
+global.budgetManager = new BudgetManager(appConf.trading.budget);
 const defTradingParams = { capital: appConf.trading.singleTradeCapital, takeProfit: appConf.trading.takeProfit, stopLoss: appConf.trading.stopLoss }; // Default parameters
 
 
@@ -138,7 +121,8 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         capital -= shares * close;
                         if (appConf.app.disableTrading === true) {
                             analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
-                            let trx = {ticker, source: params.source, action: "BUY", price: close, timestamp: nyseTime(), shares, takeProfit, stopLoss, potentialGain: (takeProfit - close) * shares, potentialLoss: (close - stopLoss) * shares, status: "Demo"};
+                            let budgetInfo = global.budgetManager.getBudgetInfo();
+                            let trx = {ticker, source: params.source, action: "BUY", price: close, timestamp: nyseTime(), shares, takeProfit, stopLoss, potentialGain: (takeProfit - close) * shares, potentialLoss: (close - stopLoss) * shares, budgetRemaining: budgetInfo.remainingBudget, budgetAllocated: budgetInfo.allocatedBudget, status: "Demo"};
                             transactionLog.info(JSON.stringify(trx));
                             sentTransactions.push(trx);
                             phase = "C"; // Skip execution monitoring
@@ -209,39 +193,31 @@ const selectStocks = async (maxNumberOfStocks) => {
     return combinedList.slice(0,numberOfStocks); // maximum 9 stocks
 }
 
-const allocateBudget = (budgetNeeded) => {
-    if (allocatedBudget + budgetNeeded > budget) {
-        appLog.info(`Insufficient budget to allocate ${budgetNeeded}. Available: ${budget - allocatedBudget}`);
-        return false;
-    }
-    allocatedBudget += budgetNeeded;
-    return true;
-};
 
-const releaseBudget = (budgetToRelease) => {
-    allocatedBudget -= budgetToRelease;
-    if (allocatedBudget < 0) allocatedBudget = 0; // Ensure no negative budget
-};
 /**
  * Worker Logic
  */
 const createWorker = (symbol, params) => {
     return async () => {
         appLog.info(`Worker started for ${symbol} with strategy ${params.type}`);
+        let allocated = false;
         try {
-            if (!allocateBudget(params.capital)) {
+            allocated = await budgetManager.allocateBudget(params.capital);
+            if (!allocated) {
                 appLog.info(`Worker for ${symbol} could not start due to insufficient budget.`);
-                workers.delete(symbol); // Cleanup worker
-                stopFlags.delete(symbol); // Cleanup stop flag
-                return;
+                let {availableBudget, allocatedBudget} = await budgetManager.getBudgetInfo();
+                analyticsLog.info(`Ticker ${symbol} | Strategy: ${params.type} | Source: ${params.source} | Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient`);
+            } else {
+                await analyzeEnhancedStrategy(symbol, params);
+                appLog.info(`Worker completed for ${symbol}. Releasing budget.`);
             }
-            await analyzeEnhancedStrategy(symbol, params);
-            appLog.info(`Worker completed for ${symbol}. Releasing budget.`);
         } catch (error) {
             console.error(`Error in worker for ${symbol}: ${error.message}`);
             appLog.info(`Error in worker for ${symbol}: ${error.message}, Releasing budget: ${params.capital}`);
         } finally {
-            releaseBudget(params.capital);
+            if (allocated) {
+                await budgetManager.releaseBudget(params.capital);
+            }
             workers.delete(symbol); // Cleanup worker
             stopFlags.delete(symbol); // Cleanup stop flag
         }
@@ -293,10 +269,10 @@ const startCLI = () => {
                     console.log(`Unknown strategy: ${strategy}`);
                     break;
                 }
-                const params = { ticker: symbol, type: strategy, ...defTradingParams }; // Default strategy
-                const worker = createWorker(symbol, params);
-                workers.set(symbol, { worker, params });
+                const params = { ticker: symbol, type: strategy, source: "Manual(CLI)", ...defTradingParams }; // Default strategy
+                workers.set(symbol, { params });
                 stopFlags.set(symbol, false); // Initialize stop flag
+                const worker = createWorker(symbol, params);
                 worker(); // Start the worker
                 break;
 
@@ -356,8 +332,8 @@ const startCLI = () => {
                         console.log("Invalid amount.");
                         break;
                     }
-                    budget += amount;
-                    console.log(`Budget increased by ${amount}. Total budget: ${budget}`);
+                    global.budget += amount;
+                    console.log(`Budget increased by ${amount}. Total budget: ${global.budget}`);
                     break;
                 case "transactions":
                 console.log("Sent Transactions:");

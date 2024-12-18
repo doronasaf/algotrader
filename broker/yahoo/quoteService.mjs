@@ -3,6 +3,17 @@ import axios from "axios";
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Fetch real-time market data
+/** fetchMarketData
+ * returns an object with the following properties:
+ * timestamps: array of timestamps
+ * volumes: array of volumes
+ * highs: array of highs
+ * lows: array of lows
+ * closes: array of closes
+
+ * @param ticker
+ * @returns {Promise<{timestamps: *, volumes, highs, lows, closes}|null>}
+ */
 export async function fetchMarketData(ticker) {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`;
     while (true) {

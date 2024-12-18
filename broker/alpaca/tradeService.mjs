@@ -11,6 +11,15 @@ const alpaca = new Alpaca({
 });
 
 // Buy stock
+
+/**
+ * name: buyStock
+ * @param symbol
+ * @param quantity
+ * @param type
+ * @param limit_price
+ * @returns {Promise<{orderStatus: undefined, order: undefined}>}
+ */
 export async function buyStock(symbol, quantity, type="market", limit_price) {
     const orderResult = {
         order: undefined,

@@ -19,3 +19,6 @@ Go to the official IBKR Gateway page:
 IB Gateway Download
 Download the MacOS installer.
 Install it similarly to TWS.
+
+Propmt to develop the client library similar to alpaca:
+https://interactivebrokers.github.io/tws-api/introduction.html
