@@ -1,143 +1,147 @@
-// import { IBApi, EventName, IBApiNextError } from 'ib-tws-api';
-import axios from 'axios'; // Assuming you use axios for HTTP requests
+import { Client, Contract } from 'ib-tws-api';
+import appConfig from '../../config/AppConfig.mjs';
 
-// Define the WebSocket equivalent for IBKR
-let isConnected = false;
+// const candleInterval = appConfig().dataSource.ibkr.candleInterval; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
+// const maxSamples = appConfig().dataSource.ibkr.maxSamples; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
 
-
-// Buffer for OHLC data
-export class OHLCBuffer {
-    constructor(maxSize = 100) {
-        this.data = [];
-        this.maxSize = maxSize;
+class OHLCAggregator {
+    constructor(symbol, intervalMs, callback) {
+        this.symbol = symbol;
+        this.intervalMs = intervalMs; // Interval duration in milliseconds (10 seconds)
+        this.callback = callback; // Callback to invoke with aggregated 5-minute data
+        this.currentInterval = null; // Tracks the current 10-second OHLC
+        this.intervalStart = null; // Start time of the current interval
+        this.rollingBuffer = []; // Stores the last 30 10-second intervals (5 minutes)
+        this.maxSamples = appConfig().dataSource.ibkr.maxSamples; // Number of samples in a 5-minute window
+        this.firstBatchReady = false; // Tracks if the first 5 minutes are ready
     }
 
-    add(ohlc) {
-        if (this.data.length >= this.maxSize) {
-            this.data.shift(); // Remove the oldest data point
-        }
-        this.data.push(ohlc);
-    }
+    processTick(data) {
+        if (data.tickType !== 4) return; // Only process last price ticks
 
-    getAll() {
-        return [...this.data]; // Return a copy of the data
-    }
-}
+        const price = data.value;
+        const now = Date.now();
 
-const ohlcBuffer = new OHLCBuffer(100);
-
-export function handleQuoteUpdate(update) {
-    if (!update || !update.type) {
-        console.warn('Invalid update received.');
-        return null;
-    }
-
-    let ohlc = null;
-
-    switch (update.type) {
-        case 'trade':
-            ohlc = {
-                open: update.price,
-                high: update.price,
-                low: update.price,
-                close: update.price,
-                volume: 0, // Trade updates may not include volume
-                timestamp: update.timestamp,
-            };
-            break;
-
-        case 'quote':
-            const midpoint = (update.bidPrice + update.askPrice) / 2 || 0;
-            ohlc = {
-                open: midpoint,
-                high: midpoint,
-                low: midpoint,
-                close: midpoint,
+        // Initialize the current interval if not already set
+        if (!this.currentInterval) {
+            this.currentInterval = {
+                open: price,
+                high: price,
+                low: price,
+                close: price,
                 volume: 0,
-                timestamp: update.timestamp,
+                timestamp: new Date().toISOString(),
             };
-            break;
+            this.intervalStart = now;
+        }
 
-        default:
-            console.warn(`Unhandled update type: ${update.type}`);
-            return null;
+        // Update OHLC values for the current interval
+        this.currentInterval.high = Math.max(this.currentInterval.high, price);
+        this.currentInterval.low = Math.min(this.currentInterval.low, price);
+        this.currentInterval.close = price;
+
+        // Update volume
+        this.currentInterval.volume += data.ticker.lastSize || 0;
+
+        // Check if the interval has ended
+        if (now - this.intervalStart >= this.intervalMs) {
+            this.finalizeInterval();
+        }
     }
 
-    if (ohlc) {
-        ohlcBuffer.add(ohlc); // Add the OHLC data to the buffer
-    }
+    finalizeInterval() {
+        // Add the completed interval to the rolling buffer
+        this.rollingBuffer.push(this.currentInterval);
 
-    return ohlcBuffer.getAll(); // Return the last 100 data points
-}
+        // Maintain a sliding window of the last 5 minutes
+        if (this.rollingBuffer.length > this.maxSamples) {
+            this.rollingBuffer.shift();
+        }
 
+        // Set the first batch as ready if we've collected 5 minutes of data
+        if (this.rollingBuffer.length === this.maxSamples) {
+            this.firstBatchReady = true;
+        }
 
-// Fetch delayed market data for a given ticker
-/** fetchMarketData
- * Fetches delayed market data for a given ticker.
- * Returns an object with the following properties:
- * - timestamps: array of timestamps
- * - volumes: array of volumes
- * - highs: array of highs
- * - lows: array of lows
- * - closes: array of closes
- *
- * @param {string} ticker - The ticker symbol (e.g., "AAPL").
- * @returns {Promise<{timestamps: *, volumes: *, highs: *, lows: *, closes: *} | null>}
- */
-export async function fetchMarketData(ticker) {
-    const IBKR_API_BASE_URL = 'http://localhost:5000/v1/api';
-    try {
-        // Step 1: Resolve the conid for the ticker
-        const searchResponse = await axios.post(`${IBKR_API_BASE_URL}/iserver/secdef/search`, {
-            symbol: ticker,
-        });
-        const conid = searchResponse.data[0]?.conid;
-        if (!conid) throw new Error(`Could not resolve conid for ticker: ${ticker}`);
+        // Trigger the callback once the first batch is ready
+        if (this.firstBatchReady) {
+            this.callback(this.rollingBuffer);
+        }
 
-        // Step 2: Fetch delayed market data
-        const response = await axios.get(`${IBKR_API_BASE_URL}/iserver/marketdata/snapshot`, {
-            params: { conid, fields: '31' }, // `31` is for delayed data
-            timeout: 5000,
-        });
-
-        // Step 3: Parse and return data
-        const bars = response.data;
-        if (!bars || !bars.length) throw new Error('No market data returned');
-
-        const timestamps = bars.map((bar) => bar.time);
-        const volumes = bars.map((bar) => bar.volume);
-        const highs = bars.map((bar) => bar.high);
-        const lows = bars.map((bar) => bar.low);
-        const closes = bars.map((bar) => bar.close);
-
-        return { timestamps, volumes, highs, lows, closes };
-    } catch (error) {
-        console.error('Error fetching market data:', error.message);
-        return null;
+        // Start a new interval, using the previous close as the next open
+        this.currentInterval = {
+            open: this.currentInterval.close,
+            high: this.currentInterval.close,
+            low: this.currentInterval.close,
+            close: this.currentInterval.close,
+            volume: 0,
+            timestamp: new Date().toISOString(),
+        };
+        this.intervalStart = Date.now();
     }
 }
 
 
-import { Client, Contract, Order } from 'ib-tws-api';
+export class MarketDataStreamer {
+    constructor() {
+        this.api = new Client({ host: '127.0.0.1', port: 4002 });
+        this.aggregators = {}; // Track OHLCAggregator instances by symbol
+    }
 
-async function run() {
-    let api = new Client({
-        host: '127.0.0.1',
-        port: 4002
-    });
+    // Dynamically add a symbol to be tracked
+    async addSymbol(symbol, callback) {
+        // Check if the symbol is already being tracked
+        if (this.aggregators[symbol]) {
+            console.log(`Symbol ${symbol} is already being tracked.`);
+            return;
+        }
 
-    let details = await api.getHistoricalData({
-        contract: Contract.stock('AAPL'),
-        endDateTime: '20241217 17:59:59 US/Eastern',
-        duration: '1 D',
-        barSizeSetting: '1 min',
-        whatToShow: 'TRADES',
-        formatDate: 1,
-        useRth: 1
-    });
-    console.log(details);
+        try {
+            const contract = Contract.stock(symbol);
+
+            // Create an OHLCAggregator for the symbol
+            const aggregator = new OHLCAggregator(symbol, appConfig().dataSource.ibkr.candleInterval, callback); // 10-second interval
+
+            // Start streaming market data for the symbol
+            const stream = await this.api.streamMarketData({ contract });
+
+            this.aggregators[symbol] = aggregator;
+
+            stream.on('tick', (data) => {
+                const aggregator = this.aggregators[symbol];
+                aggregator.processTick(data);
+            });
+
+            stream.on('error', (err) => {
+                console.error(`Stream Error for ${symbol}:`, err.message);
+                setTimeout(() => this.addSymbol(symbol, callback), 5000); // Retry the stream
+            });
+
+            console.log(`Started tracking symbol: ${symbol}`);
+        } catch (error) {
+            console.error(`Error adding symbol ${symbol}:`, error.message);
+        }
+    }
+
+    // Stop tracking a symbol
+    removeSymbol(symbol) {
+        if (this.aggregators[symbol]) {
+            delete this.aggregators[symbol];
+            console.log(`Stopped tracking symbol: ${symbol}`);
+        } else {
+            console.log(`Symbol ${symbol} is not being tracked.`);
+        }
+    }
 }
 
-(async () => {
-    await run();
-})();
+// let marketDataStreamerInstance = null; // Singleton instance
+
+// export async function fetchMarketDataFromIbkr(symbol, callback) {
+//     // Initialize the MarketDataStreamer only once
+//     if (!marketDataStreamerInstance) {
+//         marketDataStreamerInstance = new MarketDataStreamer();
+//     }
+//
+//     // Add the symbol to the MarketDataStreamer
+//     await marketDataStreamerInstance.addSymbol(symbol, callback);
+// }

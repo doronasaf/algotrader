@@ -11,6 +11,7 @@ import {TimerLog} from "../utils/TimerLog.mjs";
 import { fetchCSV } from '../stockInfo/GoogleSheetStockSelector.mjs';
 import {nyseTime} from "../utils/TimeFormatting.mjs";
 import {BudgetManager}   from "../utils/BudgetManager.jsm.js";
+import { MarketDataStreamer } from "../broker/ibkr/quoteService.mjs";
 
 const appConf = appConfig();
 const transactionLog = getEntityLogger('transactions');
@@ -39,7 +40,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     const timerLog = new TimerLog();
     const analyzersList = [];
     let selectedAnalyzer;
-    let accumulationAchieved, breakoutConfirmed, potentialGain, potentialLoss;
+    let accumulationAchieved, breakoutConfirmed;
 
 
     for (const session in tradingConfig) {
@@ -119,44 +120,23 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         // const shares = Math.floor(capital / close);
                         position += shares;
                         capital -= shares * close;
-                        potentialLoss = (close - stopLoss) * shares;
-                        potentialGain = (takeProfit - close) * shares;
-                        if (potentialGain > 6) {
-                            if (appConf.app.disableTrading === true) {
-                                analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
-                                let budgetInfo = await global.budgetManager.getBudgetInfo();
-                                let trx = {
-                                    ticker,
-                                    source: params.source,
-                                    action: "BUY",
-                                    price: close,
-                                    timestamp: nyseTime(),
-                                    shares,
-                                    takeProfit,
-                                    stopLoss,
-                                    potentialGain: potentialGain,
-                                    potentialLoss: potentialLoss,
-                                    budgetRemaining: budgetInfo.availableBudget,
-                                    budgetAllocated: budgetInfo.allocatedBudget,
-                                    status: "Demo"
-                                };
-                                transactionLog.info(JSON.stringify(trx));
-                                sentTransactions.push(trx);
-                                phase = "C"; // Skip execution monitoring
-                                break;
-                            }
-                            const orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
-                            // const orderResult = await buyStock(ticker, shares, "limit", close);
-                            orderResult.strategy = selectedAnalyzer.toString();
-                            transactionLog.info(`Ticker ${ticker} | Source: ${params.source} Buy Order: Shares = ${shares}, Buy Price = ${close}, TP = ${takeProfit}, SL = ${stopLoss}`);
-
-                            await writeToLog(ticker, close, shares, capital, orderResult, "bracket", "BUY", tradeOrders, sentTransactions, params.source);
-                            timeoutInterval = monitoringInterval;
-                            phase = "E"; // Move to Execution Monitoring
-                        } else {
-                            appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}`);
+                        if (appConf.app.disableTrading === true) {
+                            analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
+                            let budgetInfo = await global.budgetManager.getBudgetInfo();
+                            let trx = {ticker, source: params.source, action: "BUY", price: close, timestamp: nyseTime(), shares, takeProfit, stopLoss, potentialGain: (takeProfit - close) * shares, potentialLoss: (close - stopLoss) * shares, budgetRemaining: budgetInfo.availableBudget, budgetAllocated: budgetInfo.allocatedBudget, status: "Demo"};
+                            transactionLog.info(JSON.stringify(trx));
+                            sentTransactions.push(trx);
                             phase = "C"; // Skip execution monitoring
+                            break;
                         }
+                        const orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
+                        // const orderResult = await buyStock(ticker, shares, "limit", close);
+                        orderResult.strategy = selectedAnalyzer.toString();
+                        transactionLog.info(`Ticker ${ticker} | Source: ${params.source} Buy Order: Shares = ${shares}, Buy Price = ${close}, TP = ${takeProfit}, SL = ${stopLoss}`);
+
+                        await writeToLog(ticker, close, shares, capital, orderResult, "bracket", "BUY", tradeOrders, sentTransactions, params.source);
+                        timeoutInterval = monitoringInterval;
+                        phase = "E"; // Move to Execution Monitoring
                     } else if (breakoutConfirmed === 0) {
                         phase = "B"; // Stay in Breakout phase
                     } else if (breakoutConfirmed === -1) {

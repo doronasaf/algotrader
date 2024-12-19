@@ -42,14 +42,24 @@ async function streamMarketData() {
             console.error('Stream Error:', err.message);
         });
 
-        setTimeout(() => {
-            stream.stop();
-            console.log('Streaming stopped.');
-        }, 10000); // Stop after 10 seconds
+        // setTimeout(() => {
+        //     stream.stop();
+        //     console.log('Streaming stopped.');
+        // }, 10000); // Stop after 10 seconds
     } catch (error) {
         console.error('Error streaming market data:', error.message);
     }
 }
 
-// streamMarketData();
+// (async () => {
+//     while (true) {
+//         try {
+//             await streamMarketData();
+//             setTimeout(() => console.log('Restarting stream...'), 1000);
+//         } catch (error) {
+//             console.error('Error streaming market data:', error.message);
+//         }
+//     }
+// })();
 
+await streamMarketData();
