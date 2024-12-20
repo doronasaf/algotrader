@@ -1,8 +1,8 @@
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
-import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
+// import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
 import { MarketAnalyzerFactory, TradingStrategy } from "../strategies/MarketAnalyzerFactory.mjs";
-import { fetchMarketData } from "../broker/MarketDataFetcher.mjs";
+import { fetchMarketData, setBracketOrdersForBuy, getOrders } from "../broker/MarketDataFetcher.mjs";
 import {tradingConfig, isWithinTradingHours} from "../utils/TradingHours.mjs";
 import {identifyStocks} from "../stockInfo/StocksSelector.mjs";
 import {fetchEarnings} from "../stockInfo/StockCalender.mjs";
@@ -39,8 +39,16 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     const timerLog = new TimerLog();
     const analyzersList = [];
     let selectedAnalyzer;
-    let accumulationAchieved, breakoutConfirmed, potentialGain, potentialLoss;
+    let accumulationAchieved, breakoutConfirmed, potentialGain, potentialLoss, orderResult;
 
+    // seeting the right take profit multiplier based on the data source provider
+    if (appConf.dataSource.provider === 'yahoo') {
+        params.takeProfitMultiplier = appConf.dataSource.yahoo.takeProfitMultipler;
+    } else if (appConf.dataSource.provider === 'ibkr') {
+        params.takeProfitMultiplier = appConf.dataSource.ibkr.takeProfitMultipler;
+    } else {
+        // default
+    }
 
     for (const session in tradingConfig) {
         if (session !== "market") continue;
@@ -68,7 +76,6 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                     analyzersList.push({analyzer: MarketAnalyzerFactory.createAnalyzer(strategy, ticker, { closes, highs, lows, volumes }, support, resistance, params), accCompleted:false});
                 }
             }
-            // if (!analyzer) analyzer = MarketAnalyzerFactory.createAnalyzer(params.type, ticker, { closes, highs, lows, volumes }, support, resistance, params);
 
             switch (phase) {
                 case "A": // Accumulation
@@ -94,7 +101,6 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                     }
                     break;
                 case "B": // Breakout
-                    // analyzer.setSupportResistance(support, resistance);
                     let breakoutConfirmed = false
                     for (const analyzerItem of analyzersList) {
                         selectedAnalyzer = analyzerItem.analyzer;
@@ -116,43 +122,39 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                     }
                     if (breakoutConfirmed === 1) { // buy
                         const {shares, takeProfit, stopLoss} = selectedAnalyzer.getMargins();
-                        // const shares = Math.floor(capital / close);
                         position += shares;
                         capital -= shares * close;
                         potentialLoss = (close - stopLoss) * shares;
                         potentialGain = (takeProfit - close) * shares;
-                        if (potentialGain > 6) {
+                        if (potentialGain >= appConf.trading.minimumGain) {
+                            let budgetInfo = await global.budgetManager.getBudgetInfo();
+                            let trx = {
+                                ticker,
+                                source: params.source,
+                                action: "bracket",
+                                price: close,
+                                timestamp: nyseTime(),
+                                shares,
+                                takeProfit,
+                                stopLoss,
+                                potentialGain: potentialGain,
+                                potentialLoss: potentialLoss,
+                                budgetRemaining: budgetInfo.availableBudget,
+                                budgetAllocated: budgetInfo.allocatedBudget,
+                                status: "Live Buy",
+                                strategy: selectedAnalyzer.toString()
+                            };
                             if (appConf.app.disableTrading === true) {
                                 analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
-                                let budgetInfo = await global.budgetManager.getBudgetInfo();
-                                let trx = {
-                                    ticker,
-                                    source: params.source,
-                                    action: "BUY",
-                                    price: close,
-                                    timestamp: nyseTime(),
-                                    shares,
-                                    takeProfit,
-                                    stopLoss,
-                                    potentialGain: potentialGain,
-                                    potentialLoss: potentialLoss,
-                                    budgetRemaining: budgetInfo.availableBudget,
-                                    budgetAllocated: budgetInfo.allocatedBudget,
-                                    status: "Demo"
-                                };
-                                transactionLog.info(JSON.stringify(trx));
-                                sentTransactions.push(trx);
-                                phase = "C"; // Skip execution monitoring
-                                break;
+                                trx.status = "Demo Buy";
+                                phase = "C"; // Skip execution monitoring and exit
+                            } else {
+                                orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
+                                // const orderResult = await buyStock(ticker, shares, "limit", close);
+                                timeoutInterval = monitoringInterval;
+                                phase = "E"; // Move to Execution Monitoring
                             }
-                            const orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
-                            // const orderResult = await buyStock(ticker, shares, "limit", close);
-                            orderResult.strategy = selectedAnalyzer.toString();
-                            transactionLog.info(`Ticker ${ticker} | Source: ${params.source} Buy Order: Shares = ${shares}, Buy Price = ${close}, TP = ${takeProfit}, SL = ${stopLoss}`);
-
-                            await writeToLog(ticker, close, shares, capital, orderResult, "bracket", "BUY", tradeOrders, sentTransactions, params.source);
-                            timeoutInterval = monitoringInterval;
-                            phase = "E"; // Move to Execution Monitoring
+                            await writeToLog(ticker, orderResult, tradeOrders, sentTransactions, trx);
                         } else {
                             appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}`);
                             phase = "C"; // Skip execution monitoring
@@ -170,23 +172,31 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
 
                 case "E": // Execution Monitoring
                     const openOrders = await getOrders();
-
                     if (openOrders.length === 0) {
                         appLog.info(`Ticker ${ticker} | No open positions. Restarting strategy.`);
                         if (sentTransactions.length > 0) appLog.info(`Sent Transactions: ${JSON.stringify(sentTransactions)}`);
                         timeoutInterval = regularInterval;
                         phase = "C"; // Exit the strategy
                     } else {
+                        let allFilled = false;
                         for (const order of openOrders) {
-                            if (order.type === "single" && order.order.status === "filled") {
-                                timeoutInterval = regularInterval;
-                                transactionLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
-                                phase = "C";
-                            } else if (order.type === "bracket") {
-                                if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
+                            if (appConf.dataSource.provider === 'ibkr'){
+                                if (order.order.status === "Filled") {
+                                    allFilled = true;
+                                } else {
+                                    allFilled = false;
+                                }
+                            } else {
+                                if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
                                     timeoutInterval = regularInterval;
+                                    transactionLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
                                     phase = "C";
-                                    transactionLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
+                                } else if (order.type === "bracket") {
+                                    if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
+                                        timeoutInterval = regularInterval;
+                                        phase = "C";
+                                        transactionLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
+                                    }
                                 }
                             }
                         }
@@ -199,10 +209,13 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     }
 };
 
-const writeToLog = async (ticker, close, sharesOrSellValue, capital, orderResult, action, status, tradeOrders, sentTransactions, source) => {
-    tradeOrders.push(orderResult.order);
-    tradeOrders.push(orderResult.orderStatus);
-    sentTransactions.push({ ticker, source, action: action, price: close, timestamp: new Date(), sharesOrSellValue, status: status , strategy: orderResult.strategy});
+const writeToLog = async (ticker, orderResult, tradeOrders, sentTransactions, trx) => {
+    if (appConf.app.disableTrading === false) { // Live Trading
+        tradeOrders.push(orderResult.order);
+        tradeOrders.push(orderResult.orderStatus);
+    }
+    sentTransactions.push(trx);
+    transactionLog.info(JSON.stringify(trx));
 }
 
 const selectStocks = async (maxNumberOfStocks) => {

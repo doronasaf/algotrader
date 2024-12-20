@@ -10,7 +10,6 @@ import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 const analyticsLogger = getEntityLogger('analytics');
 const appLogger = getEntityLogger('app');
 
-
 export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     constructor(symbol, marketData, support, resistance, params) {
         super(symbol, marketData, support, resistance, params);
@@ -20,6 +19,9 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         this.emaShortPeriod = params.emaShortPeriod || 9;
         this.emaLongPeriod = params.emaLongPeriod || 21;
         this.rsiPeriod = params.rsiPeriod || 14;
+        this.supertrentAtrPeriod = params.supertrentAtrPeriod || 10;
+        this.KeltnerAtrPeriod = params.KeltnerAtrPeriod || 7;
+        this.profitLossAtrPeriod = params.profitLossAtrPeriod || 7;
         this.atrPeriod = params.atrPeriod || 14;
         this.vwapPeriod = params.vwapPeriod || 1; // Daily VWAP
         this.rvolThreshold = params.rvolThreshold || 1.5; // Minimum RVOL for a valid signal
@@ -34,7 +36,10 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         this.supertrendMultiplier = params.supertrendMultiplier || 3;
         this.cmfPeriod = params.cmfPeriod || 20;
 
-        this.takeProfitMultiplier = params.takeProfitMultiplier || 1.45; // ATR multiplier for take-profit - WAS 1.5
+        // Yahoo: 1.5, 1.45
+        // Alpaca: 0.5-1.0
+        // IBKR: 0.5-1.0
+        this.takeProfitMultiplier = params.takeProfitMultiplier || 1.45; // ATR multiplier for take-profit - WAS 1.5.
         this.stopLossMultiplier = params.stopLossMultiplier || 0.75; // ATR multiplier for stop-loss
 
         this.takeProfitMaxPrecent = params.takeProfitMaxPrecent || 0.04 ; // maximum percent of take profit (4%)
@@ -74,8 +79,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         return RSI.calculate({ values: closes, period: this.rsiPeriod });
     }
 
-    calculateATR(highs, lows, closes) {
-        return ATR.calculate({ high: highs, low: lows, close: closes, period: this.atrPeriod });
+    calculateATR(highs, lows, closes, period) {
+        return ATR.calculate({ high: highs, low: lows, close: closes, period });
     }
 
     calculateVWAP(highs, lows, closes, volumes) {
@@ -102,7 +107,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
     calculateSupertrend(highs, lows, closes) {
         // Calculate ATR
-        const atrValues = ATR.calculate({ high: highs, low: lows, close: closes, period: this.atrPeriod });
+        const atrValues = ATR.calculate({ high: highs, low: lows, close: closes, period: this.supertrentAtrPeriod });
 
         const supertrend = [];
         let previousUpperBand = null;
@@ -154,7 +159,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const middleLine = EMA.calculate({ values: closes, period: this.atrPeriod });
 
         // Calculate ATR
-        const atr = this.calculateATR(highs, lows, closes);
+        const atr = this.calculateATR(highs, lows, closes, this.keltnerAtrPeriod);
 
         // Ensure both arrays have the same length
         const minLength = Math.min(middleLine.length, atr.length);
@@ -243,25 +248,30 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
      */
     evaluateCMFStrategy() {
         const { closes, highs, lows, volumes } = this.marketData;
+        let isBullish = false;
+        let isBearish = false;
+        try {
+            // Calculate CMF
+            this.cmf = this.calculateCMF(closes, highs, lows, volumes, this.cmfPeriod);
 
-        // Calculate CMF
-        this.cmf = this.calculateCMF(closes, highs, lows, volumes, this.cmfPeriod);
+            // Calculate RSI
+            const rsi = RSI.calculate({values: closes, period: this.rsiPeriod});
+            this.lastRSI = rsi[rsi.length - 1];
 
-        // Calculate RSI
-        const rsi = RSI.calculate({ values: closes, period: this.rsiPeriod });
-        this.lastRSI = rsi[rsi.length - 1];
+            // Calculate EMAs
+            const emaShort = EMA.calculate({values: closes, period: this.emaShortPeriod});
+            const emaLong = EMA.calculate({values: closes, period: this.emaLongPeriod});
 
-        // Calculate EMAs
-        const emaShort = EMA.calculate({ values: closes, period: this.emaShortPeriod });
-        const emaLong = EMA.calculate({ values: closes, period: this.emaLongPeriod });
+            const lastEMAShort = emaShort[emaShort.length - 1];
+            const lastEMALong = emaLong[emaLong.length - 1];
 
-        const lastEMAShort = emaShort[emaShort.length - 1];
-        const lastEMALong = emaLong[emaLong.length - 1];
-
-        // Determine trading signals
-        const isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && this.lastRSI > this.highRsiBulishThreshold;
-        const isBearish = this.cmf < 0 && lastEMAShort < lastEMALong && this.lastRSI < this.lowRsiBearishThreshold;
-
+            // Determine trading signals
+            isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && this.lastRSI > this.highRsiBulishThreshold;
+            isBearish = this.cmf < 0 && lastEMAShort < lastEMALong && this.lastRSI < this.lowRsiBearishThreshold;
+        } catch (error) {
+            // not enough data to calculate CMF
+            appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | API: evaluateCMFStrategy | Error: ${error.message}`);
+        }
         if (isBullish) {
             appLogger.info(`Bullish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
             return 1; // Buy
@@ -392,7 +402,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     calculateStopLossAndTakeProfit() {
         const entryPrice = this.marketData.closes[this.marketData.closes.length - 1];
         const { highs, lows, closes } = this.marketData;
-        const atr = this.calculateATR(highs, lows, closes);
+        const atr = this.calculateATR(highs, lows, closes, this.profitLossAtrPeriod);
         const lastATR = atr[atr.length - 1];
         const vwap = this.calculateVWAP(highs, lows, closes, this.marketData.volumes);
         const calculatedStopLoss = Math.min(entryPrice - this.stopLossMultiplier * lastATR, vwap);

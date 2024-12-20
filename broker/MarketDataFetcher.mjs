@@ -1,23 +1,23 @@
-// const config = require('../config/config.json');
-// const { fetchMarketDataFromYahoo } = require("../broker/yahoo/quoteService");
-// const { fetchMarketDataFromAlpaca, handleQuoteUpdate } = require("../broker/alpaca/quoteService");
-// const { fetchMarketDataFromBackTester } = require("../backtesting/BackTester");
+import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 import { fetchMarketDataFromYahoo } from "./yahoo/quoteService.mjs";
 import { fetchMarketDataFromAlpaca, handleQuoteUpdate } from "./alpaca/quoteService.mjs";
 import { fetchMarketDataFromBackTester } from "../backtesting/BackTester.mjs";
 import { MarketDataStreamer } from "../broker/ibkr/quoteService.mjs";
-
+const appLog = getEntityLogger('appLog');
 const mode = appConfig().dataSource.provider; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
 
 let streamingInitialized = false;
-const marketDataStreamer = new MarketDataStreamer(); // Single instance for managing all streaming symbols
+let marketDataStreamer;// = new MarketDataStreamer(); // Single instance for managing all streaming symbols
 const symbolDataBuffers = new Map(); // Buffer for holding rolling market data for symbols
 
 export async function fetchMarketData (symbol) {
     let closes, highs, lows, volumes, update;
     let marketData;
     if (mode === 'ibkr') {
+        if (!marketDataStreamer) {
+            marketDataStreamer = new MarketDataStreamer();
+        }
         // Check if symbol is already subscribed for streaming
         if (!symbolDataBuffers.has(symbol)) {
             await initializeStreaming(symbol);
@@ -31,7 +31,11 @@ export async function fetchMarketData (symbol) {
             lows = rollingData.map(d => d.low);
             volumes = rollingData.map(d => d.volume);
         } else {
-            console.warn(`Insufficient data for ${symbol}. Buffer size: ${rollingData?.length || 0}`);
+            if (!streamingInitialized) {
+                appLog.info(`Streaming initialization is in process for ${symbol}.`);
+            } else {
+                appLog.info(`Insufficient data for ${symbol}. Buffer size: ${rollingData?.length || 0}`);
+            }
         }
     } else if (mode === 'alpacaStream') {
         marketData = await fetchMarketDataFromAlpaca(symbol, handleQuoteUpdate(update)); // Updates the buffer and fetches last 100 data points
@@ -72,32 +76,68 @@ async function initializeStreaming(symbol) {
     });
 
     streamingInitialized = true;
-    console.log(`Initialized streaming for ${symbol}`);
+    appLog.info(`Initialized streaming for ${symbol}`);
 }
 
+// Expose getOrders function
+export async function getOrders() {
+    try {
+        return marketDataStreamer.getOrders();
+    } catch (error) {
+        appLog.info("Error fetching orders:", error.message);
+        throw error;
+    }
+}
+
+// Expose getOpenPositions function
+export async function getOpenPositions() {
+    try {
+        return marketDataStreamer.getOpenPositions();
+    } catch (error) {
+        appLog.info("Error fetching open positions:", error.message);
+        throw error;
+    }
+}
+
+// Expose getOrderById function
+export async function getOrderById(orderId) {
+    try {
+        return marketDataStreamer.getOrderById(orderId);
+    } catch (error) {
+        appLog.info(`Error fetching order by ID (${orderId}):`, error.message);
+        throw error;
+    }
+}
+
+// Expose setBracketOrder function
+export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice) {
+    try {
+        return await marketDataStreamer.setBracketOrder(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice);
+    } catch (error) {
+        appLog.info(`Error placing bracket order for ${symbol}:`, error.message);
+        throw error;
+    }
+}
 
 function marketDataIsValid(marketData) {
     let dataIsValid = true;
     if (mode === 'alpacaStream') {
         if (!marketData) {
-            console.warn("No market data available.");
+            appLog.info("No market data available.");
             dataIsValid = false;
         } else if (!marketData?.length) {
-            console.warn("Missing market data length.");
+            appLog.info("Missing market data length.");
             dataIsValid = false;
         } else if (marketData?.length < 20) { // Minimum data points for analysis TBD CHANGE WHEN WORKING IN REALTIME ASAF ZZZZZZZ
-            // console.warn("Insufficient data for analysis... filling buffer.");
+            appLog.info("Insufficient data for analysis... filling buffer.");
             dataIsValid = false;
         }
     } else if (mode === 'yahoo') {
         if (!marketData) {
-            console.warn("No market data available.");
+            appLog.info("No market data available.");
             dataIsValid = false;
         }
     }
     return dataIsValid;
 }
 
-// module.exports = {
-//     fetchMarketData,
-// }
