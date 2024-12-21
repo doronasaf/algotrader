@@ -14,7 +14,8 @@ class OHLCAggregator {
         this.currentInterval = null; // Tracks the current 10-second OHLC
         this.intervalStart = null; // Start time of the current interval
         this.rollingBuffer = []; // Stores the last 30 10-second intervals (5 minutes)
-        this.maxSamples = appConfig().dataSource.ibkr.maxSamples; // Number of samples in a 5-minute window
+        this.maxSamples = appConfig().dataSource.ibkr.maxSamples; // Number of samples for the rolling buffer
+        this.minSamples = appConfig().dataSource.ibkr.minSamples; // Minimum samples to trigger callback
         this.firstBatchReady = false; // Tracks if the first 5 minutes are ready
     }
 
@@ -64,7 +65,7 @@ class OHLCAggregator {
         }
 
         // Set the first batch as ready if we've collected 5 minutes of data
-        if (this.rollingBuffer.length === this.maxSamples) {
+        if (this.rollingBuffer.length === this.minSamples) {
             this.firstBatchReady = true;
         }
 
@@ -141,10 +142,8 @@ export class MarketDataStreamer {
         }
     }
 
-
     // Dynamically add a symbol to be tracked
     async addSymbol(symbol, callback) {
-        // Check if the symbol is already being tracked
         if (this.aggregators[symbol]) {
             appLog.info(`Symbol ${symbol} is already being tracked.`);
             return;
@@ -154,19 +153,23 @@ export class MarketDataStreamer {
             const contract = Contract.stock(symbol);
 
             // Create an OHLCAggregator for the symbol
-            const aggregator = new OHLCAggregator(symbol, appConfig().dataSource.ibkr.candleInterval, callback); // 10-second interval
+            const aggregator = new OHLCAggregator(symbol, appConfig().dataSource.ibkr.candleInterval, callback);
 
             // Start streaming market data for the symbol
             const stream = await this.api.streamMarketData({ contract });
 
+            // Attach stream to aggregator for cleanup
+            aggregator.stream = stream;
             this.aggregators[symbol] = aggregator;
 
-            stream.on('tick', (data) => {
+            stream.on("tick", (data) => {
                 const aggregator = this.aggregators[symbol];
-                aggregator.processTick(data);
+                if (aggregator) {
+                    aggregator.processTick(data);
+                }
             });
 
-            stream.on('error', (err) => {
+            stream.on("error", (err) => {
                 console.error(`Stream Error for ${symbol}:`, err.message);
                 this.retrySymbolInitialization(symbol, callback, 5000);
             });
@@ -182,17 +185,87 @@ export class MarketDataStreamer {
     async retrySymbolInitialization(symbol, callback, delayMs) {
         appLog.info(`Retrying initialization for symbol: ${symbol} after ${delayMs}ms`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
-        delete this.aggregators[symbol];
+
+        // Ensure the symbol is cleaned up before retrying
+        if (this.aggregators[symbol]) {
+            const aggregator = this.aggregators[symbol];
+            if (aggregator.stream) {
+                aggregator.stream.stop();
+                aggregator.stream.removeAllListeners();
+            }
+            delete this.aggregators[symbol];
+        }
+
         await this.addSymbol(symbol, callback);
     }
 
     // Stop tracking a symbol
-    removeSymbol(symbol) {
-        if (this.aggregators[symbol]) {
+    async removeSymbol(symbol) {
+        if (!this.aggregators[symbol]) {
+            appLog.info(`Symbol ${symbol} is not being tracked.`);
+            return;
+        }
+
+        try {
+            // Stop the stream for the symbol
+            const aggregator = this.aggregators[symbol];
+            if (aggregator && aggregator.stream) {
+                aggregator.stream.stop(); // Stop the market data stream
+                aggregator.stream.removeAllListeners(); // Remove all listeners to prevent memory leaks
+                appLog.info(`Stopped stream for symbol: ${symbol}`);
+            }
+
+            // Clean up the aggregator and remove the symbol
             delete this.aggregators[symbol];
             appLog.info(`Stopped tracking symbol: ${symbol}`);
-        } else {
-            appLog.info(`Symbol ${symbol} is not being tracked.`);
+        } catch (error) {
+            console.error(`Error stopping tracking for symbol ${symbol}:`, error.message);
+        }
+    }
+
+    // Get Historical Data - Syncronous operation - no callback needed
+    async fetchOHLC (symbol, barSize = "1 min") {
+        try {
+            const contract = {
+                symbol,
+                secType: "STK", // Security type (e.g., STK for stocks)
+                exchange: "SMART", // IBKR's SMART routing
+                currency: "USD", // Currency
+            };
+
+            // Prepare parameters for the historical data request
+            const endDateTime = ""; // Leave empty to fetch up to the current time
+            const durationStr = "1 D"; // Fetch the last 20 minutes
+            const whatToShow = "TRADES"; // Fetch trade data for OHLC
+            const useRth = 1; // Only fetch Regular Trading Hours (1 = RTH, 0 = All hours)
+            const formatDate = 1; // Use human-readable date format
+
+            // Fetch historical data
+            const historicalData = await this.api.getHistoricalData({
+                contract,
+                endDateTime,
+                duration: durationStr,
+                barSizeSetting: barSize,
+                whatToShow,
+                useRth,
+                formatDate,
+            });
+
+            // Transform the data into a structured format
+            const ohlcData = historicalData.map((bar) => ({
+                timestamp: bar.time,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume,
+            }));
+
+            console.log(`Fetched ${ohlcData.length} bars for ${symbol}`);
+            return ohlcData;
+        } catch (error) {
+            console.error(`Error fetching OHLC data for ${symbol}:`, error.message);
+            throw error;
         }
     }
 
@@ -324,3 +397,15 @@ export class MarketDataStreamer {
         });
     }
 }
+
+//
+// (async () => {
+//     const marketDataStreamer = new MarketDataStreamer();
+//
+//     try {
+//         const ohlcData = await marketDataStreamer.fetchOHLC("AAPL", "1 min");
+//         console.log("Fetched OHLC data:", ohlcData);
+//     } catch (error) {
+//         console.error("Error fetching OHLC data:", error.message);
+//     }
+// })();

@@ -1,5 +1,5 @@
 export class IMarketAnalyzer {
-    constructor(symbol, marketData, support, resistance, params) {
+    constructor(symbol, marketData, support, resistance, params, appConf) {
         if (new.target === IMarketAnalyzer) {
             throw new Error('Cannot instantiate abstract class MarketAnalyzer directly.');
         }
@@ -8,6 +8,7 @@ export class IMarketAnalyzer {
         this.support = support;
         this.resistance = resistance;
         this.params = params;
+        this.appConf = appConf;
         this.margins = {};
     }
 
@@ -51,6 +52,3 @@ export class IMarketAnalyzer {
     }
 }
 
-// module.exports =  {
-//     IMarketAnalyzer
-// };

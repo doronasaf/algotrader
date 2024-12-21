@@ -82,10 +82,9 @@ async function initializeStreaming(symbol) {
 // Expose getOrders function
 export async function getOrders() {
     try {
-        return marketDataStreamer.getOrders();
+        return marketDataStreamer.getOpenOrders();
     } catch (error) {
         appLog.info("Error fetching orders:", error.message);
-        throw error;
     }
 }
 
@@ -95,7 +94,6 @@ export async function getOpenPositions() {
         return marketDataStreamer.getOpenPositions();
     } catch (error) {
         appLog.info("Error fetching open positions:", error.message);
-        throw error;
     }
 }
 
@@ -105,7 +103,6 @@ export async function getOrderById(orderId) {
         return marketDataStreamer.getOrderById(orderId);
     } catch (error) {
         appLog.info(`Error fetching order by ID (${orderId}):`, error.message);
-        throw error;
     }
 }
 
@@ -115,10 +112,15 @@ export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeP
         return await marketDataStreamer.setBracketOrder(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice);
     } catch (error) {
         appLog.info(`Error placing bracket order for ${symbol}:`, error.message);
-        throw error;
     }
 }
 
+export async function stopMarketData (symbol) {
+    if (mode === 'ibkr') {
+        await marketDataStreamer.removeSymbol(symbol);
+        symbolDataBuffers.delete(symbol);
+    }
+}
 function marketDataIsValid(marketData) {
     let dataIsValid = true;
     if (mode === 'alpacaStream') {

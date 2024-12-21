@@ -1,9 +1,3 @@
-// const { EMA, RSI, ATR, VWAP, MACD, BollingerBands, Supertrend } = require('technicalindicators');
-// const {IMarketAnalyzer} = require("./IMarketAnalyzer");
-// const getEntityLogger = require('../utils/logger/loggerManager');
-// const analyticsLogger = getEntityLogger('analytics');
-// const appLogger = getEntityLogger('app');
-
 import { EMA, RSI, ATR, VWAP, MACD, BollingerBands } from 'technicalindicators';
 import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
@@ -11,42 +5,47 @@ const analyticsLogger = getEntityLogger('analytics');
 const appLogger = getEntityLogger('app');
 
 export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
-    constructor(symbol, marketData, support, resistance, params) {
-        super(symbol, marketData, support, resistance, params);
+    constructor(symbol, marketData, support, resistance, params, appConfig) {
+        super(symbol, marketData, support, resistance, params, appConfig);
         this.marketData = marketData; // { closes, highs, lows, volumes }
 
         // Strategy parameters
-        this.emaShortPeriod = params.emaShortPeriod || 9;
-        this.emaLongPeriod = params.emaLongPeriod || 21;
-        this.rsiPeriod = params.rsiPeriod || 14;
-        this.supertrentAtrPeriod = params.supertrentAtrPeriod || 10;
-        this.KeltnerAtrPeriod = params.KeltnerAtrPeriod || 7;
-        this.profitLossAtrPeriod = params.profitLossAtrPeriod || 7;
-        this.atrPeriod = params.atrPeriod || 14;
-        this.vwapPeriod = params.vwapPeriod || 1; // Daily VWAP
-        this.rvolThreshold = params.rvolThreshold || 1.5; // Minimum RVOL for a valid signal
+        this.emaShortPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.emaShortPeriod || 9;
+        this.emaLongPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.emaLongPeriod || 21;
+        this.rsiPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.rsiPeriod || 14;
+        this.supertrentAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.supertrentAtrPeriod || 30;
+        this.KeltnerAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.KeltnerAtrPeriod || 30;
+        this.profitLossAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.profitLossAtrPeriod || 30;
+        this.vwapPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.vwapPeriod || 1; // Daily VWAP
+        this.rvolThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.rvolThreshold || 1.5; // Minimum RVOL for a valid signal
+
+        // MACD uses:
+        // A 18-period EMA (fast).
+        // A 30-period EMA (slow).
+        // A 9-period EMA for the signal line.
+        // At least 39 data points (30 for the slow EMA + 9 for the signal line) are needed.
         this.macdParams = {
-            fastPeriod: params.macdFast || 12,
-            slowPeriod: params.macdSlow || 26,
-            signalPeriod: params.macdSignal || 9,
+            fastPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdFast || 18,
+            slowPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdSlow || 30,
+            signalPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdSignal || 9,
             SimpleMAOscillator: false,
             SimpleMASignal: false,
         };
-        this.keltnerMultiplier = params.keltnerMultiplier || 1.5;
-        this.supertrendMultiplier = params.supertrendMultiplier || 3;
-        this.cmfPeriod = params.cmfPeriod || 20;
+        this.keltnerMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.keltnerMultiplier || 1.5;
+        this.supertrendMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.supertrendMultiplier || 3;
+        this.cmfPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.cmfPeriod || 20;
 
         // Yahoo: 1.5, 1.45
         // Alpaca: 0.5-1.0
         // IBKR: 0.5-1.0
-        this.takeProfitMultiplier = params.takeProfitMultiplier || 1.45; // ATR multiplier for take-profit - WAS 1.5.
-        this.stopLossMultiplier = params.stopLossMultiplier || 0.75; // ATR multiplier for stop-loss
+        this.takeProfitMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.takeProfitMultiplier || 1.45; // ATR multiplier for take-profit - WAS 1.5.
+        this.stopLossMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.stopLossMultiplier || 0.75; // ATR multiplier for stop-loss
 
-        this.takeProfitMaxPrecent = params.takeProfitMaxPrecent || 0.04 ; // maximum percent of take profit (4%)
-        this.stopLossMaxPercent = params.stopLossMaxPercent || 0.03; // maximum percent of stop loss (3%)
+        this.takeProfitMaxPrecent = appConfig.strategies.TrendMomentumBreakoutStrategy.takeProfitMaxPrecent || 0.04 ; // maximum percent of take profit (4%)
+        this.stopLossMaxPercent = appConfig.strategies.TrendMomentumBreakoutStrategy.stopLossMaxPercent || 0.03; // maximum percent of stop loss (3%)
 
-        this.lowRsiBearishThreshold = 40;
-        this.highRsiBulishThreshold = 60;
+        this.lowRsiBearishThreshold = 30; // for short term; long term is 45
+        this.highRsiBulishThreshold = 45; // for short term; long term is 60
     }
 
     calculateEMA(closes, period) {
@@ -90,7 +89,49 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         return cumulativeVWAP / cumulativeVolume;
     }
 
+    validateMACDInput(closes, macdParams) {
+        const { fastPeriod, slowPeriod, signalPeriod } = macdParams;
+
+        // Check if MACD parameters are valid
+        if (!fastPeriod || !slowPeriod || !signalPeriod) {
+            appLogger.info(`TrendMomentumBreakoutStrategy.validateMACDInput: Ticker: ${this.symbol} MACD parameters are missing or invalid.`);
+            throw new Error("MACD parameters are missing or invalid.");
+        }
+        if (fastPeriod >= slowPeriod) {
+            appLogger.info(`TrendMomentumBreakoutStrategy.validateMACDInput: Ticker: ${this.symbol} MACD fastPeriod must be less than slowPeriod.`);
+            throw new Error("MACD fastPeriod must be less than slowPeriod.");
+        }
+        if (signalPeriod <= 0) {
+            appLogger.info(`TrendMomentumBreakoutStrategy.validateMACDInput: Ticker: ${this.symbol} MACD signalPeriod must be greater than 0.`);
+            throw new Error("MACD signalPeriod must be greater than 0.");
+        }
+
+        // Check data length
+        const requiredLength = slowPeriod + signalPeriod - 1;
+        if (!Array.isArray(closes) || closes.length < requiredLength) {
+            appLogger.info(`TrendMomentumBreakoutStrategy.validateMACDInput: Ticker: ${this.symbol} Insufficient data for MACD calculation. Need at least ${requiredLength} data points, but received ${closes.length}.`);
+            throw new Error(
+                `Insufficient data for MACD calculation. Need at least ${requiredLength} data points, but received ${closes.length}.`
+            );
+        }
+
+        // Check for invalid data
+        const invalidDataIndex = closes.findIndex((val) => isNaN(val) || val === null || val === undefined);
+        if (invalidDataIndex !== -1) {
+            appLogger.info(`TrendMomentumBreakoutStrategy.validateMACDInput: Ticker: ${this.symbol} Invalid data at index ${invalidDataIndex}: ${closes[invalidDataIndex]}`);
+            throw new Error(`Invalid data at index ${invalidDataIndex}: ${closes[invalidDataIndex]}`);
+        }
+
+        // Check for variability in data
+        const allSame = closes.every((val, i, arr) => val === arr[0]);
+        if (allSame) {
+            appLogger.info(`TrendMomentumBreakoutStrategy.validateMACDInput: Ticker: ${this.symbol} All closing prices are identical: ${closes[0]}, MACD cannot be calculated.`);
+            throw new Error("Closing prices are all identical. MACD cannot be calculated.");
+        }
+    }
+
     calculateMACD(closes) {
+        this.validateMACDInput(closes, this.macdParams);
         return MACD.calculate({
             values: closes,
             ...this.macdParams,
@@ -115,13 +156,13 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         let previousSupertrend = null;
 
         for (let i = 0; i < closes.length; i++) {
-            if (i < this.atrPeriod - 1) {
+            if (i < this.supertrentAtrPeriod - 1) {
                 // Not enough data to calculate ATR
                 supertrend.push(null);
                 continue;
             }
 
-            const atr = atrValues[i - this.atrPeriod + 1];
+            const atr = atrValues[i - this.supertrentAtrPeriod + 1];
             const basicUpperBand = (highs[i] + lows[i]) / 2 + this.supertrendMultiplier * atr;
             const basicLowerBand = (highs[i] + lows[i]) / 2 - this.supertrendMultiplier * atr;
 
@@ -155,16 +196,33 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     }
 
     calculateKeltnerChannels(highs, lows, closes) {
+        // Input validation
+        if (!Array.isArray(highs) || !Array.isArray(lows) || !Array.isArray(closes)) {
+            throw new Error("Input data must be arrays.");
+        }
+        if (highs.length < this.keltnerAtrPeriod || lows.length < this.keltnerAtrPeriod || closes.length < this.keltnerAtrPeriod) {
+            throw new Error(`Insufficient data. At least ${this.keltnerAtrPeriod} data points are required.`);
+        }
+        if (highs.some((val) => isNaN(val)) || lows.some((val) => isNaN(val)) || closes.some((val) => isNaN(val))) {
+            throw new Error("Input arrays contain invalid numbers.");
+        }
+
         // Calculate EMA (Middle Line)
-        const middleLine = EMA.calculate({ values: closes, period: this.atrPeriod });
+        const middleLine = EMA.calculate({ values: closes, period: this.keltnerAtrPeriod });
 
         // Calculate ATR
         const atr = this.calculateATR(highs, lows, closes, this.keltnerAtrPeriod);
 
-        // Ensure both arrays have the same length
+        // Ensure arrays are aligned
         const minLength = Math.min(middleLine.length, atr.length);
         const trimmedMiddleLine = middleLine.slice(-minLength);
         const trimmedATR = atr.slice(-minLength);
+
+        // Validate intermediate values
+        if (trimmedMiddleLine.some((val) => isNaN(val)) || trimmedATR.some((val) => isNaN(val))) {
+            console.error("Intermediate values contain NaN. Check input data or calculation logic.");
+            return { middleLine: [], upperBand: [], lowerBand: [] };
+        }
 
         // Calculate Upper and Lower Bands
         const upperBand = trimmedMiddleLine.map((ml, i) => ml + trimmedATR[i] * this.keltnerMultiplier);
@@ -176,6 +234,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             lowerBand,
         };
     }
+
 
     calculateHeikinAshi() {
         const { closes, highs, lows } = this.marketData;
@@ -248,8 +307,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
      */
     evaluateCMFStrategy() {
         const { closes, highs, lows, volumes } = this.marketData;
-        let isBullish = false;
-        let isBearish = false;
+        let isBullish = false, isBearish = false;
+        let lastEMAShort, lastEMALong;
         try {
             // Calculate CMF
             this.cmf = this.calculateCMF(closes, highs, lows, volumes, this.cmfPeriod);
@@ -262,8 +321,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             const emaShort = EMA.calculate({values: closes, period: this.emaShortPeriod});
             const emaLong = EMA.calculate({values: closes, period: this.emaLongPeriod});
 
-            const lastEMAShort = emaShort[emaShort.length - 1];
-            const lastEMALong = emaLong[emaLong.length - 1];
+            lastEMAShort = emaShort[emaShort.length - 1];
+            lastEMALong = emaLong[emaLong.length - 1];
 
             // Determine trading signals
             isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && this.lastRSI > this.highRsiBulishThreshold;
@@ -345,12 +404,23 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
     evaluateMACD() {
         const { closes } = this.marketData;
-        const macdValues = this.calculateMACD(closes);
+        const macdValues = MACD.calculate({
+            values: closes,
+            ...this.macdParams,
+        });
+        //    this.calculateMACD(closes);
         if (!macdValues || macdValues.length === 0) {
-            appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Error: MACD calculation failed, not enough data`);
-            return -1;
+            const message = `Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Error: MACD calculation failed, not enough data`;
+            appLogger.info(message);
+            throw new Error(message);
         }
         this.lastMACD = macdValues[macdValues.length - 1];
+
+        if (!this.lastMACD || typeof this.lastMACD.MACD !== "number" || typeof this.lastMACD.signal !== "number") {
+            const message = `Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Error: Invalid MACD values`;
+            appLogger.info(message);
+            throw new Error(message);
+        }
 
         if (this.lastMACD && this.lastMACD.MACD > this.lastMACD.signal) {
             return 1; // Bullish
@@ -420,27 +490,28 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     }
 
     async evaluateBreakout() {
-        // Combine signals from all strategies
-        // const emaSignal = this.evaluateEMA(); // included in evaluateCMFStrategy
-        // const rsiSignal = this.evaluateRSI(); // included in evaluateCMFStrategy
-        const vwapSignal = this.evaluateVWAP();
-        const macdSignal = this.evaluateMACD();
-        const supertrendSignal = this.evaluateSupertrend();
-        const keltnerSignal = this.evaluateKeltnerChannels();
-        const rvolSignal = this.evaluateRVOL();
-        const heikinAshiSignal = this.evaluateHeikinAshi();
-        const cmfSignal = this.evaluateCMFStrategy();
+        try {
+            // Combine signals from all strategies
+            // const emaSignal = this.evaluateEMA(); // included in evaluateCMFStrategy
+            // const rsiSignal = this.evaluateRSI(); // included in evaluateCMFStrategy
+            const vwapSignal = this.evaluateVWAP();
+            const macdSignal = this.evaluateMACD();
+            const supertrendSignal = this.evaluateSupertrend();
+            const keltnerSignal = this.evaluateKeltnerChannels();
+            const rvolSignal = this.evaluateRVOL();
+            const heikinAshiSignal = this.evaluateHeikinAshi();
+            const cmfSignal = this.evaluateCMFStrategy();
 
-        const signals = [vwapSignal, macdSignal, supertrendSignal, keltnerSignal, rvolSignal, heikinAshiSignal, cmfSignal];
-        // const buySignals = signals.filter((s) => s === 1).length;
-        // const sellSignals = signals.filter((s) => s === -1).length;
-        const totalScore = signals.reduce((acc, signal) => acc + signal, 0);
-        const close = this.marketData.closes[this.marketData.closes.length - 1];
+            const signals = [vwapSignal, macdSignal, supertrendSignal, keltnerSignal, rvolSignal, heikinAshiSignal, cmfSignal];
+            // const buySignals = signals.filter((s) => s === 1).length;
+            // const sellSignals = signals.filter((s) => s === -1).length;
+            const totalScore = signals.reduce((acc, signal) => acc + signal, 0);
+            const close = this.marketData.closes[this.marketData.closes.length - 1];
 
-        analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Score: ${totalScore} Target Score: ${signals.length} | Breakdown - VWAP: ${vwapSignal}, MACD: ${macdSignal}, Supertrend: ${supertrendSignal}, Keltner: ${keltnerSignal}, RVOL: ${rvolSignal}, Heikin-Ashi: ${heikinAshiSignal}, CMF: ${cmfSignal}`);
-        if (totalScore >= 4) {
-            this.calculateMargins();
-            analyticsLogger.info(`
+            analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Score: ${totalScore} Target Score: ${signals.length} | Breakdown - VWAP: ${vwapSignal}, MACD: ${macdSignal}, Supertrend: ${supertrendSignal}, Keltner: ${keltnerSignal}, RVOL: ${rvolSignal}, Heikin-Ashi: ${heikinAshiSignal}, CMF: ${cmfSignal}`);
+            if (totalScore >= 4) {
+                this.calculateMargins();
+                analyticsLogger.info(`
                     Ticker: ${this.symbol}
                     Strategy: TrendMomentumBreakoutStrategy
                     Status: Buy
@@ -477,11 +548,14 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                         * Value: ${this.cmf}
                         * Score: ${cmfSignal}
                 `);
-            return 1; // Buy Signal
-        } else  {
-            return 0; // Hold
+                return 1; // Buy Signal
+            } else {
+                return 0; // Hold
+            }
+        } catch (error) {
+            appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | API: evaluateBreakout | Error: ${error.message}`);
+            return -2; // Error
         }
-        // sell signal is never returned because we are only measuring a buy signals
     }
 
     async evaluateAccumulation() {

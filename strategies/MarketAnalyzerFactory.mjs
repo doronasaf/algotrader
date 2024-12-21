@@ -1,10 +1,3 @@
-// const {BullishMomentumStrategy} = require("./BullishMomentumStrategy");
-// const {OversoldWithUpwardMomentumStrategy} = require("./OversoldWithUpwardMomentumStrategy");
-// const {CombinedMomentumStrategy} = require("./CombinedMomentumStrategy");
-// const {CombinedMomentumWithWeightsStrategy} = require("./CombinedMomentumWithWeightsStrategy");
-// const {KeltnerChannelsStrategy} = require("./KeltnerChannelsStrategy");
-// const {TrendMomentumBreakoutStrategy} = require("./TrendMomentumBreakoutStrategy");
-
 import {BullishMomentumStrategy} from "./BullishMomentumStrategy.mjs";
 import {OversoldWithUpwardMomentumStrategy} from "./OversoldWithUpwardMomentumStrategy.mjs";
 import {CombinedMomentumStrategy} from "./CombinedMomentumStrategy.mjs";
@@ -23,7 +16,7 @@ export const TradingStrategy = {
 
 
 export class MarketAnalyzerFactory {
-    static createAnalyzer(tradingStrategy, symbol, marketData, support, resistance, params) {
+    static createAnalyzer(tradingStrategy, symbol, marketData, support, resistance, params, appConf) {
         switch (tradingStrategy) {
             case TradingStrategy.BullishMomentum:
                 return new BullishMomentumStrategy(symbol, marketData, support, resistance, params);
@@ -36,7 +29,7 @@ export class MarketAnalyzerFactory {
             case TradingStrategy.KeltnerChannelsStrategy:
                 return new KeltnerChannelsStrategy(symbol, marketData, support, resistance, params);
             case TradingStrategy.TrendMomentumBreakoutStrategy:
-                 return new TrendMomentumBreakoutStrategy(symbol, marketData, support, resistance, params);
+                 return new TrendMomentumBreakoutStrategy(symbol, marketData, support, resistance, params, appConf);
             default:
                 throw new Error(`Unknown analyzer type: ${tradingStrategy}`);
         }

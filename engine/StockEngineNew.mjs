@@ -2,7 +2,7 @@ import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 // import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
 import { MarketAnalyzerFactory, TradingStrategy } from "../strategies/MarketAnalyzerFactory.mjs";
-import { fetchMarketData, setBracketOrdersForBuy, getOrders } from "../broker/MarketDataFetcher.mjs";
+import { fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders } from "../broker/MarketDataFetcher.mjs";
 import {tradingConfig, isWithinTradingHours} from "../utils/TradingHours.mjs";
 import {identifyStocks} from "../stockInfo/StocksSelector.mjs";
 import {fetchEarnings} from "../stockInfo/StockCalender.mjs";
@@ -55,156 +55,176 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
         const tradingSession = tradingConfig[session];
         if (!tradingSession.enabled) continue;
         while (isWithinTradingHours(tradingSession)) {
-            // **Check Stop Flag**
-            if (stopFlags.get(ticker) && phase !== "E") {
-                appLog.info(`Worker for ${ticker} stopped by user, phase = ${phase}`);
-                return; // Exit gracefully
-            }
-
-            let { closes, highs, lows, volumes } = await fetchMarketData(ticker);
-            if (!closes || !highs || !lows || !volumes || closes?.length < 20) {
-                appLog.info(`Insufficient data for ${ticker}. Retrying...`);
-                await new Promise((resolve) => setTimeout(resolve, regularInterval));
-                continue;
-            }
-
-            let close = closes[closes.length - 1];
-            const high = highs[highs.length - 1];
-            const low = lows[lows.length - 1];
-            if (analyzersList.length === 0) {
-                for (const strategy of strategyTypes) {
-                    analyzersList.push({analyzer: MarketAnalyzerFactory.createAnalyzer(strategy, ticker, { closes, highs, lows, volumes }, support, resistance, params), accCompleted:false});
+            try {
+                // **Check Stop Flag**
+                if (stopFlags.get(ticker) && phase !== "E") {
+                    appLog.info(`Worker for ${ticker} stopped by user, phase = ${phase}`);
+                    // await stopMarketData(ticker); // keep the data for future use
+                    return; // Exit gracefully
                 }
-            }
 
-            switch (phase) {
-                case "A": // Accumulation
-                    if (!support || !resistance) {
-                        support = low;
-                        resistance = high;
-                    } else {
-                        if (high > resistance) resistance = high;
-                        if (low < support) support = low;
+                let {closes, highs, lows, volumes} = await fetchMarketData(ticker);
+                if (!closes || !highs || !lows || !volumes || closes?.length < 20) {
+                    appLog.info(`Insufficient data for ${ticker}. Retrying...`);
+                    await new Promise((resolve) => setTimeout(resolve, regularInterval));
+                    continue;
+                }
+
+                let close = closes[closes.length - 1];
+                const high = highs[highs.length - 1];
+                const low = lows[lows.length - 1];
+                if (analyzersList.length === 0) {
+                    for (const strategy of strategyTypes) {
+                        analyzersList.push({
+                            analyzer: MarketAnalyzerFactory.createAnalyzer(strategy, ticker, {
+                                closes,
+                                highs,
+                                lows,
+                                volumes
+                            }, support, resistance, params, appConf),
+                            accCompleted: false
+                        });
                     }
-                    for (const analyzerItem of analyzersList) {
-                        selectedAnalyzer = analyzerItem.analyzer;
-                        selectedAnalyzer.setSupportResistance(support, resistance);
-                        selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
-                        timerLog.start(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Accumulation Phase (A)`);
-                        accumulationAchieved = await selectedAnalyzer.evaluateAccumulation();
-                        analyzerItem.accCompleted = accumulationAchieved;
-                        timerLog.stop(`Ticker ${ticker} | Accumulation Phase (A)`);
-                        if (accumulationAchieved) {
-                            phase = "B";
-                            appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Moved to Breakout Phase (B)`);
+                }
+
+                switch (phase) {
+                    case "A": // Accumulation
+                        if (!support || !resistance) {
+                            support = low;
+                            resistance = high;
+                        } else {
+                            if (high > resistance) resistance = high;
+                            if (low < support) support = low;
                         }
-                    }
-                    break;
-                case "B": // Breakout
-                    let breakoutConfirmed = false
-                    for (const analyzerItem of analyzersList) {
-                        selectedAnalyzer = analyzerItem.analyzer;
-                        if (!analyzerItem.accCompleted) {
+                        for (const analyzerItem of analyzersList) {
+                            selectedAnalyzer = analyzerItem.analyzer;
                             selectedAnalyzer.setSupportResistance(support, resistance);
                             selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
+                            timerLog.start(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Accumulation Phase (A)`);
                             accumulationAchieved = await selectedAnalyzer.evaluateAccumulation();
                             analyzerItem.accCompleted = accumulationAchieved;
-                        };
-                        if (analyzerItem.accCompleted) {
-                            selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
-                            timerLog.start(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Breakout Phase (B)`);
-                            breakoutConfirmed = await selectedAnalyzer.evaluateBreakout();
-                            timerLog.stop(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Breakout Phase (B)`);
-                            if (breakoutConfirmed === 1) {
-                                break;
+                            timerLog.stop(`Ticker ${ticker} | Accumulation Phase (A)`);
+                            if (accumulationAchieved) {
+                                phase = "B";
+                                appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Moved to Breakout Phase (B)`);
                             }
                         }
-                    }
-                    if (breakoutConfirmed === 1) { // buy
-                        const {shares, takeProfit, stopLoss} = selectedAnalyzer.getMargins();
-                        position += shares;
-                        capital -= shares * close;
-                        potentialLoss = (close - stopLoss) * shares;
-                        potentialGain = (takeProfit - close) * shares;
-                        if (potentialGain >= appConf.trading.minimumGain) {
-                            let budgetInfo = await global.budgetManager.getBudgetInfo();
-                            let trx = {
-                                ticker,
-                                source: params.source,
-                                action: "bracket",
-                                price: close,
-                                timestamp: nyseTime(),
-                                shares,
-                                takeProfit,
-                                stopLoss,
-                                potentialGain: potentialGain,
-                                potentialLoss: potentialLoss,
-                                budgetRemaining: budgetInfo.availableBudget,
-                                budgetAllocated: budgetInfo.allocatedBudget,
-                                status: "Live Buy",
-                                strategy: selectedAnalyzer.toString()
-                            };
-                            if (appConf.app.disableTrading === true) {
-                                analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
-                                trx.status = "Demo Buy";
-                                phase = "C"; // Skip execution monitoring and exit
-                            } else {
-                                orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
-                                // const orderResult = await buyStock(ticker, shares, "limit", close);
-                                timeoutInterval = monitoringInterval;
-                                phase = "E"; // Move to Execution Monitoring
+                        break;
+                    case "B": // Breakout
+                        let breakoutConfirmed = false
+                        for (const analyzerItem of analyzersList) {
+                            selectedAnalyzer = analyzerItem.analyzer;
+                            if (!analyzerItem.accCompleted) {
+                                selectedAnalyzer.setSupportResistance(support, resistance);
+                                selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
+                                accumulationAchieved = await selectedAnalyzer.evaluateAccumulation();
+                                analyzerItem.accCompleted = accumulationAchieved;
                             }
-                            await writeToLog(ticker, orderResult, tradeOrders, sentTransactions, trx);
-                        } else {
-                            appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}`);
-                            phase = "C"; // Skip execution monitoring
-                        }
-                    } else if (breakoutConfirmed === 0) {
-                        phase = "B"; // Stay in Breakout phase
-                    } else if (breakoutConfirmed === -1) {
-                        phase = "A"; // Return to Accumulation phase
-                    }
-                    break;
-
-                case "C": // Cleanup
-                    appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer?.toString()} | End of trading session`);
-                    return;
-
-                case "E": // Execution Monitoring
-                    const openOrders = await getOrders();
-                    if (openOrders.length === 0) {
-                        appLog.info(`Ticker ${ticker} | No open positions. Restarting strategy.`);
-                        if (sentTransactions.length > 0) appLog.info(`Sent Transactions: ${JSON.stringify(sentTransactions)}`);
-                        timeoutInterval = regularInterval;
-                        phase = "C"; // Exit the strategy
-                    } else {
-                        let allFilled = false;
-                        for (const order of openOrders) {
-                            if (appConf.dataSource.provider === 'ibkr'){
-                                if (order.order.status === "Filled") {
-                                    allFilled = true;
-                                } else {
-                                    allFilled = false;
+                            ;
+                            if (analyzerItem.accCompleted) {
+                                selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
+                                timerLog.start(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Breakout Phase (B)`);
+                                breakoutConfirmed = await selectedAnalyzer.evaluateBreakout();
+                                timerLog.stop(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Breakout Phase (B)`);
+                                if (breakoutConfirmed === 1) {
+                                    break;
                                 }
+                            }
+                        }
+                        if (breakoutConfirmed === 1) { // buy
+                            const {shares, takeProfit, stopLoss} = selectedAnalyzer.getMargins();
+                            position += shares;
+                            capital -= shares * close;
+                            potentialLoss = (close - stopLoss) * shares;
+                            potentialGain = (takeProfit - close) * shares;
+                            if (potentialGain >= appConf.trading.minimumGain) {
+                                let budgetInfo = await global.budgetManager.getBudgetInfo();
+                                let trx = {
+                                    ticker,
+                                    source: params.source,
+                                    action: "bracket",
+                                    price: close,
+                                    timestamp: nyseTime(),
+                                    shares,
+                                    takeProfit,
+                                    stopLoss,
+                                    potentialGain: potentialGain,
+                                    potentialLoss: potentialLoss,
+                                    budgetRemaining: budgetInfo.availableBudget,
+                                    budgetAllocated: budgetInfo.allocatedBudget,
+                                    status: "Live Buy",
+                                    strategy: selectedAnalyzer.toString()
+                                };
+                                if (appConf.app.disableTrading === true) {
+                                    analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
+                                    trx.status = "Demo Buy";
+                                    phase = "C"; // Skip execution monitoring and exit
+                                } else {
+                                    orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
+                                    // const orderResult = await buyStock(ticker, shares, "limit", close);
+                                    timeoutInterval = monitoringInterval;
+                                    phase = "E"; // Move to Execution Monitoring
+                                }
+                                await writeToLog(ticker, orderResult, tradeOrders, sentTransactions, trx);
                             } else {
-                                if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
-                                    timeoutInterval = regularInterval;
-                                    transactionLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
-                                    phase = "C";
-                                } else if (order.type === "bracket") {
-                                    if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
+                                appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}`);
+                                phase = "C"; // Skip execution monitoring
+                            }
+                        } else if (breakoutConfirmed === 0) {
+                            phase = "B"; // Stay in Breakout phase
+                        } else if (breakoutConfirmed === -1) {
+                            phase = "A"; // Return to Accumulation phase
+                        } else if (breakoutConfirmed === -2) {
+                            appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Breakout phase failed with errors! check the app.log. Exiting strategy.`);
+                            phase = "C"; // Exit the strategy
+                        }
+                        break;
+
+                    case "C": // Cleanup
+                        appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer?.toString()} | End of trading session`);
+                        // await stopMarketData(ticker); // keep the data for future use
+                        return;
+
+                    case "E": // Execution Monitoring
+                        const openOrders = await getOrders();
+                        if (openOrders.length === 0) {
+                            appLog.info(`Ticker ${ticker} | No open positions. Restarting strategy.`);
+                            if (sentTransactions.length > 0) appLog.info(`Sent Transactions: ${JSON.stringify(sentTransactions)}`);
+                            timeoutInterval = regularInterval;
+                            phase = "C"; // Exit the strategy
+                        } else {
+                            let allFilled = false;
+                            for (const order of openOrders) {
+                                if (appConf.dataSource.provider === 'ibkr') {
+                                    if (order.order.status === "Filled") {
+                                        allFilled = true;
+                                    } else {
+                                        allFilled = false;
+                                    }
+                                } else {
+                                    if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
                                         timeoutInterval = regularInterval;
+                                        transactionLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
                                         phase = "C";
-                                        transactionLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
+                                    } else if (order.type === "bracket") {
+                                        if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
+                                            timeoutInterval = regularInterval;
+                                            phase = "C";
+                                            transactionLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    break;
-            }
+                        break;
+                }
 
-            await new Promise((resolve) => setTimeout(resolve, timeoutInterval));
+                await new Promise((resolve) => setTimeout(resolve, timeoutInterval));
+            } catch (error) {
+                console.error(`Error in worker for ${ticker}: ${error.message}`);
+                appLog.info(`Error in worker for ${ticker}: ${error.message}, stack: ${error.stack}`);
+                return;
+            }
         }
     }
 };
@@ -240,7 +260,7 @@ const createWorker = (symbol, params) => {
             if (!allocated) {
                 appLog.info(`Worker for ${symbol} could not start due to insufficient budget.`);
                 let {availableBudget, allocatedBudget} = await budgetManager.getBudgetInfo();
-                analyticsLog.info(`Ticker ${symbol} | Strategy: ${params.type} | Source: ${params.source} | Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient`);
+                analyticsLog.info(`Ticker ${symbol} | Strategy: ${params.type} | Source: ${params.source} | Required Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient`);
             } else {
                 await analyzeEnhancedStrategy(symbol, params);
                 appLog.info(`Worker completed for ${symbol}. Releasing budget.`);
@@ -393,6 +413,7 @@ const startCLI = () => {
                 const runningWorkers = workers.keys();
                 for (const worker of runningWorkers) {
                     appLog.info(`Stopping worker for ${worker}`);
+                    await stopMarketData(worker);
                     stopFlags.set(worker, true);
                 }
                 rl.close();
@@ -422,10 +443,9 @@ function tryRunWorker (stockCandidate, strategyType) {
 
 const engine = async () => {
     try {
-        const maxStockToFetch = appConf.stockSelector.maxNumberOfStocks;
+        const maxStockToFetch = appConf.stockSelector.maxNumberOfStocks || 0;
         while (running) {
-            if (workers.size === 0) {
-
+            if (workers.size === 0 && maxStockToFetch > 0) {
                 let stockCandidates = await selectStocks(maxStockToFetch); // Fetch max 10 stocks
                 for (let i = 0; i < stockCandidates.length; i++) {
                     const stockCandidate = stockCandidates[i];
