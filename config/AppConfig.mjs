@@ -1,5 +1,5 @@
 import {TrendMomentumBreakoutStrategy} from "../strategies/TrendMomentumBreakoutStrategy.mjs";
-
+// modified paramters for Trend Momentum Breakout Strategy
 export default function appConfig() {
     return {
         "app": {
