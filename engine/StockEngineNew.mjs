@@ -1,16 +1,16 @@
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 // import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
-import { MarketAnalyzerFactory, TradingStrategy } from "../strategies/MarketAnalyzerFactory.mjs";
-import { fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders } from "../broker/MarketDataFetcher.mjs";
+import {MarketAnalyzerFactory, TradingStrategy} from "../strategies/MarketAnalyzerFactory.mjs";
+import {fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders} from "../broker/MarketDataFetcher.mjs";
 import {tradingConfig, isWithinTradingHours} from "../utils/TradingHours.mjs";
 import {identifyStocks} from "../stockInfo/StocksSelector.mjs";
 import {fetchEarnings} from "../stockInfo/StockCalender.mjs";
 import readline from "readline";
 import {TimerLog} from "../utils/TimerLog.mjs";
-import { fetchCSV } from '../stockInfo/GoogleSheetStockSelector.mjs';
+import {fetchCSV} from '../stockInfo/GoogleSheetStockSelector.mjs';
 import {nyseTime} from "../utils/TimeFormatting.mjs";
-import {BudgetManager}   from "../utils/BudgetManager.jsm.js";
+import {BudgetManager} from "../utils/BudgetManager.jsm.js";
 
 const appConf = appConfig();
 const transactionLog = getEntityLogger('transactions');
@@ -24,7 +24,11 @@ const tradeOrders = [];
 const strategyTypes = Object.values(TradingStrategy);
 let running = true; // Flag to control engine status
 global.budgetManager = new BudgetManager(appConf.trading.budget);
-const defTradingParams = { capital: appConf.trading.singleTradeCapital, takeProfit: appConf.trading.takeProfit, stopLoss: appConf.trading.stopLoss }; // Default parameters
+const defTradingParams = {
+    capital: appConf.trading.singleTradeCapital,
+    takeProfit: appConf.trading.takeProfit,
+    stopLoss: appConf.trading.stopLoss
+}; // Default parameters
 
 
 const analyzeEnhancedStrategy = async (ticker, params) => {
@@ -40,6 +44,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     const analyzersList = [];
     let selectedAnalyzer;
     let accumulationAchieved, breakoutConfirmed, potentialGain, potentialLoss, orderResult;
+    let budgetAllocationSucceeded = false;
 
     // seeting the right take profit multiplier based on the data source provider
     if (appConf.dataSource.provider === 'yahoo') {
@@ -120,7 +125,6 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                 accumulationAchieved = await selectedAnalyzer.evaluateAccumulation();
                                 analyzerItem.accCompleted = accumulationAchieved;
                             }
-                            ;
                             if (analyzerItem.accCompleted) {
                                 selectedAnalyzer.setMarketData({closes, highs, lows, volumes});
                                 timerLog.start(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Breakout Phase (B)`);
@@ -138,34 +142,40 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                             potentialLoss = (close - stopLoss) * shares;
                             potentialGain = (takeProfit - close) * shares;
                             if (potentialGain >= appConf.trading.minimumGain) {
-                                let budgetInfo = await global.budgetManager.getBudgetInfo();
-                                let trx = {
-                                    ticker,
-                                    source: params.source,
-                                    action: "bracket",
-                                    price: close,
-                                    timestamp: nyseTime(),
-                                    shares,
-                                    takeProfit,
-                                    stopLoss,
-                                    potentialGain: potentialGain,
-                                    potentialLoss: potentialLoss,
-                                    budgetRemaining: budgetInfo.availableBudget,
-                                    budgetAllocated: budgetInfo.allocatedBudget,
-                                    status: "Live Buy",
-                                    strategy: selectedAnalyzer.toString()
-                                };
-                                if (appConf.app.disableTrading === true) {
-                                    analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
-                                    trx.status = "Demo Buy";
-                                    phase = "C"; // Skip execution monitoring and exit
+                                budgetAllocationSucceeded = await budgetManager.allocateBudget(params.capital);
+                                if (budgetAllocationSucceeded) {
+                                    let budgetInfo = await global.budgetManager.getBudgetInfo();
+                                    let trx = {
+                                        ticker,
+                                        source: params.source,
+                                        action: "bracket",
+                                        price: close,
+                                        timestamp: nyseTime(),
+                                        shares,
+                                        takeProfit,
+                                        stopLoss,
+                                        potentialGain: potentialGain,
+                                        potentialLoss: potentialLoss,
+                                        budgetRemaining: budgetInfo.availableBudget,
+                                        budgetAllocated: budgetInfo.allocatedBudget,
+                                        status: "Live Buy",
+                                        strategy: selectedAnalyzer.toString()
+                                    };
+                                    if (appConf.app.disableTrading === true) {
+                                        analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
+                                        trx.status = "Demo Buy";
+                                        phase = "C"; // Skip execution monitoring and exit
+                                    } else {
+                                        orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
+                                        // const orderResult = await buyStock(ticker, shares, "limit", close);
+                                        timeoutInterval = monitoringInterval;
+                                        phase = "E"; // Move to Execution Monitoring
+                                    }
+                                    await writeToLog(ticker, orderResult, tradeOrders, sentTransactions, trx);
                                 } else {
-                                    orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
-                                    // const orderResult = await buyStock(ticker, shares, "limit", close);
-                                    timeoutInterval = monitoringInterval;
-                                    phase = "E"; // Move to Execution Monitoring
+                                    let {availableBudget, allocatedBudget} = await budgetManager.getBudgetInfo();
+                                    analyticsLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Source: ${params.source} | Required Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient. Quit buying`);
                                 }
-                                await writeToLog(ticker, orderResult, tradeOrders, sentTransactions, trx);
                             } else {
                                 appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}`);
                                 phase = "C"; // Skip execution monitoring
@@ -182,6 +192,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
 
                     case "C": // Cleanup
                         appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer?.toString()} | End of trading session`);
+                        budgetManager.releaseBudget(params.capital);
                         // await stopMarketData(ticker); // keep the data for future use
                         return;
 
@@ -244,7 +255,7 @@ const selectStocks = async (maxNumberOfStocks) => {
     const todayEarningStocks = await fetchEarnings(dateString);
     const combinedList = await identifyStocks(todayEarningStocks);
     const numberOfStocks = Math.min(maxNumberOfStocks, combinedList.length);
-    return combinedList.slice(0,numberOfStocks); // maximum 9 stocks
+    return combinedList.slice(0, numberOfStocks); // maximum 9 stocks
 }
 
 
@@ -254,24 +265,12 @@ const selectStocks = async (maxNumberOfStocks) => {
 const createWorker = (symbol, params) => {
     return async () => {
         appLog.info(`Worker started for ${symbol} with strategy ${params.type}`);
-        let allocated = false;
         try {
-            allocated = await budgetManager.allocateBudget(params.capital);
-            if (!allocated) {
-                appLog.info(`Worker for ${symbol} could not start due to insufficient budget.`);
-                let {availableBudget, allocatedBudget} = await budgetManager.getBudgetInfo();
-                analyticsLog.info(`Ticker ${symbol} | Strategy: ${params.type} | Source: ${params.source} | Required Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient`);
-            } else {
-                await analyzeEnhancedStrategy(symbol, params);
-                appLog.info(`Worker completed for ${symbol}. Releasing budget.`);
-            }
+            await analyzeEnhancedStrategy(symbol, params);
         } catch (error) {
             console.error(`Error in worker for ${symbol}: ${error.message}`);
             appLog.info(`Error in worker for ${symbol}: ${error.message}, Releasing budget: ${params.capital}`);
         } finally {
-            if (allocated) {
-                await budgetManager.releaseBudget(params.capital);
-            }
             workers.delete(symbol); // Cleanup worker
             stopFlags.delete(symbol); // Cleanup stop flag
         }
@@ -291,7 +290,7 @@ const startCLI = () => {
 
     rl.on("line", async (line) => {
         const [command, ...args] = line.trim().split(" ");
-        let budgetInfo, counter=0;
+        let budgetInfo, counter = 0;
 
         switch (command) {
             case "help":
@@ -325,8 +324,8 @@ const startCLI = () => {
                     console.log(`Unknown strategy: ${strategy}`);
                     break;
                 }
-                const params = { ticker: symbol, type: strategy, source: "Manual(CLI)", ...defTradingParams }; // Default strategy
-                workers.set(symbol, { params });
+                const params = {ticker: symbol, type: strategy, source: "Manual(CLI)", ...defTradingParams}; // Default strategy
+                workers.set(symbol, {params});
                 stopFlags.set(symbol, false); // Initialize stop flag
                 const worker = createWorker(symbol, params);
                 worker(); // Start the worker
@@ -349,7 +348,7 @@ const startCLI = () => {
             case "list":
                 console.log("Active Workers:");
                 counter = 0;
-                for (const [symbol, { params }] of workers) {
+                for (const [symbol, {params}] of workers) {
                     counter++;
                     console.log(`${counter}) ${symbol}: Strategy = ${params.type}`);
                 }
@@ -359,7 +358,7 @@ const startCLI = () => {
             case "refresh-stocks":
                 console.log("Refresh stocks");
                 const stockCandidates = await identifyStocks([]); // Fetch max 10 stocks
-                for (let i=0; i< stockCandidates.length; i++) {
+                for (let i = 0; i < stockCandidates.length; i++) {
                     const stock = stockCandidates[i];
                     let strategyType = strategyTypes[i % strategyTypes.length];
                     const symbol = stock.symbol;
@@ -371,7 +370,7 @@ const startCLI = () => {
                 console.log("Refresh from google sheets");
                 let stockList = await fetchCSV(appConf.dataSource.google_sheets.url);
                 stockList.splice(appConf.dataSource.google_sheets.maxSymbols);
-                for (let i=0; i< stockList.length; i++) {
+                for (let i = 0; i < stockList.length; i++) {
                     if (!stockList[i][0]) continue;
                     const symbol = stockList[i][0];
                     const strategy = stockList[i][1];
@@ -425,18 +424,19 @@ const startCLI = () => {
     });
 };
 
-function tryRunWorker (stockCandidate, strategyType) {
+function tryRunWorker(stockCandidate, strategyType) {
     const symbol = stockCandidate.symbol;
     if (!workers.has(symbol)) {
 
         console.log(`Spawning worker for ${symbol}`);
-        const params = { ticker: symbol, type: strategyType, source: stockCandidate.source, ...defTradingParams }; // Default parameters
+        const params = {ticker: symbol, type: strategyType, source: stockCandidate.source, ...defTradingParams}; // Default parameters
         const worker = createWorker(symbol, params);
-        workers.set(symbol, { worker, params });
+        workers.set(symbol, {worker, params});
         stopFlags.set(symbol, false); // Initialize stop flag
         worker(); // Start the worker
     }
 }
+
 /**
  * Engine Logic
  */

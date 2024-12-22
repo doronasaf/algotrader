@@ -21,31 +21,28 @@ export default function appConfig() {
         },
         strategies: {
             TrendMomentumBreakoutStrategy: {
-                emaShortPeriod: 9,
-                emaLongPeriod: 21,
-                rsiPeriod: 14,
-                supertrentAtrPeriod: 30,
+                emaShortPeriod: 9, // used in CMF
+                emaLongPeriod: 21, // used in CMF
+                rsiPeriod: 7,   // used in CMF
+                bollingerRSIPeriod: 10,
                 KeltnerAtrPeriod: 30,
-                profitLossAtrPeriod: 30,
-                vwapPeriod: 1, // Daily VWAP
-                rvolThreshold: 1.5, // Minimum RVOL for a valid signal
+                rvolThreshold: 1.2, // Minimum RVOL for a valid signal
 
-                macdFastPeriod: 18,
-                macdSlowPeriod: 30,
-                macdSignalPeriod: 9,
-                minSamplesForMACD: 39, //   macdSlowPeriod + macdSignalPeriod
+                macdFastPeriod: 5,
+                macdSlowPeriod: 15,
+                macdSignalPeriod: 3,
+                minSamplesForMACD: 18, //   macdSlowPeriod + macdSignalPeriod
 
                 keltnerMultiplier: 1.5,
-                supertrendMultiplier: 3,
                 cmfPeriod: 20,
 
                 takeProfitMultiplier: 1.45, // ATR multiplier for take-profit - WAS 1.5.
                 stopLossMultiplier: 0.75, // ATR multiplier for stop-loss
-                takeProfitMaxPrecent: 0.04, // maximum percent of take profit (4%)
-                stopLossMaxPercent: 0.03, // maximum percent of stop loss (3%)
+                takeProfitMaxPrecent: 0.015, // maximum percent of take profit (4%)
+                stopLossMaxPercent: 0.01125, // maximum percent of stop loss (3%)
 
                 lowRsiBearishThreshold: 30, // for short term; long term is 45
-                highRsiBulishThreshold: 45, // for short term; long term is 60
+                highRsiBulishThreshold: 50, // for short term; long term is 60
             }
         },
         "dataSource": {
@@ -65,7 +62,7 @@ export default function appConfig() {
             "ibkr": {
                 "candleInterval": 10000,//was 10000
                 "maxSamples": 120, // 20 minutes (120 * 10s)
-                "minSamples": 39,
+                "minSamples": 33,
                 "takeProfitMultipler": 1.45,
             }
         }

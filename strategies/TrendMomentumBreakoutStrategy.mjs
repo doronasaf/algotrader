@@ -12,12 +12,10 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         // Strategy parameters
         this.emaShortPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.emaShortPeriod || 9;
         this.emaLongPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.emaLongPeriod || 21;
-        this.rsiPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.rsiPeriod || 14;
-        this.supertrentAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.supertrentAtrPeriod || 30;
+        this.rsiPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.rsiPeriod || 7;
+        this.bollingerRSIPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.bollingerRSIPeriod || 14;
         this.KeltnerAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.KeltnerAtrPeriod || 30;
-        this.profitLossAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.profitLossAtrPeriod || 30;
-        this.vwapPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.vwapPeriod || 1; // Daily VWAP
-        this.rvolThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.rvolThreshold || 1.5; // Minimum RVOL for a valid signal
+        this.rvolThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.rvolThreshold || 1.2; // Minimum RVOL for a valid signal
 
         // MACD uses:
         // A 18-period EMA (fast).
@@ -25,14 +23,13 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         // A 9-period EMA for the signal line.
         // At least 39 data points (30 for the slow EMA + 9 for the signal line) are needed.
         this.macdParams = {
-            fastPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdFast || 18,
-            slowPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdSlow || 30,
-            signalPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdSignal || 9,
+            fastPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdFastPeriod || 18,
+            slowPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdSlowPeriod || 30,
+            signalPeriod: appConfig.strategies.TrendMomentumBreakoutStrategy.macdSignalPeriod || 9,
             SimpleMAOscillator: false,
             SimpleMASignal: false,
         };
         this.keltnerMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.keltnerMultiplier || 1.5;
-        this.supertrendMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.supertrendMultiplier || 3;
         this.cmfPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.cmfPeriod || 20;
 
         // Yahoo: 1.5, 1.45
@@ -44,8 +41,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         this.takeProfitMaxPrecent = appConfig.strategies.TrendMomentumBreakoutStrategy.takeProfitMaxPrecent || 0.04 ; // maximum percent of take profit (4%)
         this.stopLossMaxPercent = appConfig.strategies.TrendMomentumBreakoutStrategy.stopLossMaxPercent || 0.03; // maximum percent of stop loss (3%)
 
-        this.lowRsiBearishThreshold = 30; // for short term; long term is 45
-        this.highRsiBulishThreshold = 45; // for short term; long term is 60
+        this.lowRsiBearishThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.lowRsiBearishThreshold || 30; // for short term; long term is 45
+        this.highRsiBulishThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.highRsiBulishThreshold || 50;// for short term; long term is 60
     }
 
     calculateEMA(closes, period) {
@@ -140,59 +137,10 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
     calculateBollingerBands(closes) {
         return BollingerBands.calculate({
-            period: this.rsiPeriod,
+            period: this.bollingerRSIPeriod,
             values: closes,
             stdDev: 2,
         });
-    }
-
-    calculateSupertrend(highs, lows, closes) {
-        // Calculate ATR
-        const atrValues = ATR.calculate({ high: highs, low: lows, close: closes, period: this.supertrentAtrPeriod });
-
-        const supertrend = [];
-        let previousUpperBand = null;
-        let previousLowerBand = null;
-        let previousSupertrend = null;
-
-        for (let i = 0; i < closes.length; i++) {
-            if (i < this.supertrentAtrPeriod - 1) {
-                // Not enough data to calculate ATR
-                supertrend.push(null);
-                continue;
-            }
-
-            const atr = atrValues[i - this.supertrentAtrPeriod + 1];
-            const basicUpperBand = (highs[i] + lows[i]) / 2 + this.supertrendMultiplier * atr;
-            const basicLowerBand = (highs[i] + lows[i]) / 2 - this.supertrendMultiplier * atr;
-
-            const upperBand = previousUpperBand && closes[i] > previousUpperBand
-                ? Math.max(basicUpperBand, previousUpperBand)
-                : basicUpperBand;
-
-            const lowerBand = previousLowerBand && closes[i] < previousLowerBand
-                ? Math.min(basicLowerBand, previousLowerBand)
-                : basicLowerBand;
-
-            let trend;
-            if (previousSupertrend === "bullish") {
-                trend = closes[i] > lowerBand ? "bullish" : "bearish";
-            } else {
-                trend = closes[i] < upperBand ? "bearish" : "bullish";
-            }
-
-            supertrend.push({
-                trend,
-                upperBand,
-                lowerBand,
-            });
-
-            previousUpperBand = upperBand;
-            previousLowerBand = lowerBand;
-            previousSupertrend = trend;
-        }
-
-        return supertrend;
     }
 
     calculateKeltnerChannels(highs, lows, closes) {
@@ -297,6 +245,50 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         }
 
         return volumeSum === 0 ? 0 : moneyFlowVolumeSum / volumeSum;
+    }
+
+    evaluateBollingerBands() {
+        const { closes } = this.marketData;
+        if (closes.length < this.bollingerRSIPeriod) {
+            appLogger.info(`Ticker: ${this.symbol} | Bollinger Bands calculation failed, not enough data`);
+        }
+        const bollingerBands = this.calculateBollingerBands(closes);
+
+        // Ensure we have enough data for analysis
+        if (!bollingerBands || bollingerBands.length === 0) {
+            appLogger.info(`Ticker: ${this.symbol} | Bollinger Bands calculation failed, not enough data`);
+            throw new Error("Insufficient data for Bollinger Bands evaluation");
+        }
+
+        // Get the latest Bollinger Band values
+        const latest = bollingerBands[bollingerBands.length - 1];
+        const { upper, lower, middle } = latest;
+        const lastClose = closes[closes.length - 1];
+
+        // Log the latest Bollinger Band state
+        appLogger.info(
+            `Ticker: ${this.symbol} | Bollinger Bands: Upper = ${upper}, Middle = ${middle}, Lower = ${lower}, Last Close = ${lastClose}`
+        );
+
+        // Evaluate the price relative to the Bollinger Bands
+        if (lastClose > upper) {
+            appLogger.info(`Ticker: ${this.symbol} | Bullish: Price broke above the upper band.`);
+            this.bollingerSignalDesc = "Strong Bullish"
+            return 1; // Bullish
+        } else if (lastClose < lower) {
+            appLogger.info(`Ticker: ${this.symbol} | Bearish: Price broke below the lower band.`);
+            return -1; // Bearish
+        } else if (lastClose > middle) {
+            appLogger.info(`Ticker: ${this.symbol} | Slightly Bullish: Price is above the middle band.`);
+            this.bollingerSignalDesc = "Slightly Bullish";
+            return 1; // Bullish
+        } else if (lastClose < middle) {
+            appLogger.info(`Ticker: ${this.symbol} | Slightly Bearish: Price is below the middle band.`);
+            return -1; // Bearish
+        }
+
+        appLogger.info(`Ticker: ${this.symbol} | Neutral: Price is near the middle band.`);
+        return 0; // Neutral
     }
 
     /**
@@ -404,11 +396,11 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
     evaluateMACD() {
         const { closes } = this.marketData;
-        const macdValues = MACD.calculate({
-            values: closes,
-            ...this.macdParams,
-        });
-        //    this.calculateMACD(closes);
+        // const macdValues = MACD.calculate({
+        //     values: closes,
+        //     ...this.macdParams,
+        // });
+        const macdValues = this.calculateMACD(closes);
         if (!macdValues || macdValues.length === 0) {
             const message = `Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Error: MACD calculation failed, not enough data`;
             appLogger.info(message);
@@ -425,19 +417,6 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         if (this.lastMACD && this.lastMACD.MACD > this.lastMACD.signal) {
             return 1; // Bullish
         } else if (this.lastMACD && this.lastMACD.MACD < this.lastMACD.signal) {
-            return -1; // Bearish
-        }
-        return 0; // Neutral
-    }
-
-    evaluateSupertrend() {
-        const { highs, lows, closes } = this.marketData;
-        const supertrendValues = this.calculateSupertrend(highs, lows, closes);
-        this.lastSupertrend = supertrendValues[supertrendValues.length - 1];
-
-        if (this.lastSupertrend && this.lastSupertrend.trend === "bullish") {
-            return 1; // Bullish
-        } else if (this.lastSupertrend && this.lastSupertrend.trend === "bearish") {
             return -1; // Bearish
         }
         return 0; // Neutral
@@ -472,7 +451,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     calculateStopLossAndTakeProfit() {
         const entryPrice = this.marketData.closes[this.marketData.closes.length - 1];
         const { highs, lows, closes } = this.marketData;
-        const atr = this.calculateATR(highs, lows, closes, this.profitLossAtrPeriod);
+        const atr = this.calculateATR(highs, lows, closes, closes.length-1);
         const lastATR = atr[atr.length - 1];
         const vwap = this.calculateVWAP(highs, lows, closes, this.marketData.volumes);
         const calculatedStopLoss = Math.min(entryPrice - this.stopLossMultiplier * lastATR, vwap);
@@ -496,19 +475,19 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             // const rsiSignal = this.evaluateRSI(); // included in evaluateCMFStrategy
             const vwapSignal = this.evaluateVWAP();
             const macdSignal = this.evaluateMACD();
-            const supertrendSignal = this.evaluateSupertrend();
             const keltnerSignal = this.evaluateKeltnerChannels();
             const rvolSignal = this.evaluateRVOL();
             const heikinAshiSignal = this.evaluateHeikinAshi();
             const cmfSignal = this.evaluateCMFStrategy();
+            const bullingerSignal = this.evaluateBollingerBands();
 
-            const signals = [vwapSignal, macdSignal, supertrendSignal, keltnerSignal, rvolSignal, heikinAshiSignal, cmfSignal];
+            const signals = [vwapSignal, macdSignal, keltnerSignal, rvolSignal, heikinAshiSignal, cmfSignal, bullingerSignal];
             // const buySignals = signals.filter((s) => s === 1).length;
             // const sellSignals = signals.filter((s) => s === -1).length;
             const totalScore = signals.reduce((acc, signal) => acc + signal, 0);
             const close = this.marketData.closes[this.marketData.closes.length - 1];
 
-            analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Score: ${totalScore} Target Score: ${signals.length} | Breakdown - VWAP: ${vwapSignal}, MACD: ${macdSignal}, Supertrend: ${supertrendSignal}, Keltner: ${keltnerSignal}, RVOL: ${rvolSignal}, Heikin-Ashi: ${heikinAshiSignal}, CMF: ${cmfSignal}`);
+            analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Score: ${totalScore} Target Score: ${signals.length} | Breakdown - VWAP: ${vwapSignal}, MACD: ${macdSignal}, Keltner: ${keltnerSignal}, RVOL: ${rvolSignal}, Heikin-Ashi: ${heikinAshiSignal}, CMF: ${cmfSignal}`);
             if (totalScore >= 4) {
                 this.calculateMargins();
                 analyticsLogger.info(`
@@ -537,16 +516,16 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                         * MACD Value: ${this.lastMACD.MACD}
                         * Signal Value: ${this.lastMACD.signal}
                         * Score: ${macdSignal}
-                      - Supertrend:
-                        * Trend: ${this.lastSupertrend.trend}
-                        * Score: ${supertrendSignal}
-                        - Keltner Channels:
+                      - Keltner Channels:
                         * Score: ${keltnerSignal}
                       - Heikin-Ashi:
                         * Score: ${heikinAshiSignal}
                       - CMF (includes RSI and EMA):
                         * Value: ${this.cmf}
                         * Score: ${cmfSignal}
+                      - Bollinger Bands:
+                        * Value: ${this.bollingerSignalDesc}
+                        * Score: ${bullingerSignal}
                 `);
                 return 1; // Buy Signal
             } else {
