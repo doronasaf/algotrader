@@ -9,10 +9,23 @@ const nyseTimeFormatter = new Intl.DateTimeFormat('en-US', {
 });
 
 
-export function nyseTime() {
-    const now = new Date();
+export function nyseTime(optionalTime) {
+    let now = typeof optionalTime !== "undefined" ? new Date(optionalTime) : new Date();
     const formattedDate = nyseTimeFormatter.format(now);
     return formattedDate;
+}
+
+export function getDateXDaysYMinutesAgo(x = 0, y = 0) {
+    // Get the current date and time
+    const now = new Date();
+
+    // Subtract x days (can result in previous month)
+    now.setDate(now.getDate() - x);
+
+    // Subtract y minutes (can result in previous hour or day)
+    now.setMinutes(now.getMinutes() - y);
+
+    return now;
 }
 
 // iffe invokation

@@ -1,6 +1,7 @@
 import { Client, Contract } from 'ib-tws-api';
 import appConfig from '../../config/AppConfig.mjs';
 import {getEntityLogger} from '../../utils/logger/loggerManager.mjs';
+import {nyseTime} from '../../utils/TimeFormatting.mjs';
 const appLog = getEntityLogger('app');
 
 // const candleInterval = appConfig().dataSource.ibkr.candleInterval; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
@@ -231,11 +232,12 @@ export class MarketDataStreamer {
                 secType: "STK", // Security type (e.g., STK for stocks)
                 exchange: "SMART", // IBKR's SMART routing
                 currency: "USD", // Currency
+                includeExpired: false,
             };
 
             // Prepare parameters for the historical data request
-            const endDateTime = ""; // Leave empty to fetch up to the current time
-            const durationStr = "1 D"; // Fetch the last 20 minutes
+            const endDateTime = "20241220-19:30:00"; // Leave empty to fetch up to the current time
+            const durationStr = "3 D"; // Fetch the last 20 minutes
             const whatToShow = "TRADES"; // Fetch trade data for OHLC
             const useRth = 1; // Only fetch Regular Trading Hours (1 = RTH, 0 = All hours)
             const formatDate = 1; // Use human-readable date format
@@ -268,6 +270,115 @@ export class MarketDataStreamer {
             throw error;
         }
     }
+
+    async buildOHLCFromTicks(symbol, duration, barSize) {
+        try {
+            // Define contract
+            const contract = {
+                symbol,
+                secType: "STK", // Stock
+                exchange: "SMART", // SMART routing
+                currency: "USD", // Currency
+            };
+
+            // Calculate startDateTime based on duration
+            const now = new Date();
+            const durationMs = this.parseDurationToMilliseconds(duration); // Convert duration to milliseconds
+            const startDateTime = new Date(now.getTime() - durationMs).toISOString().substring(0,now.toISOString().indexOf('.')).replaceAll('-','').replace('T','-');
+
+            // Fetch historical tick data
+            const tickData = await this.api.getHistoricalTicks({
+                contract,
+                startDateTime, // Calculated based on duration
+                numberOfTicks: 10000, // Up to now
+                whatToShow: "TRADES", // Fetch trades data
+                useRth: 1, // Regular trading hours only
+            });
+
+            if (!tickData || tickData.length === 0) {
+                throw new Error(`No tick data available for ${symbol}`);
+            }
+
+            console.log(`Fetched ${tickData.length} ticks for ${symbol}`);
+
+            // Define the aggregation interval in milliseconds (e.g., 1-minute = 60000 ms)
+            const intervalMs = this.parseBarSizeToMilliseconds(barSize);
+
+            // Aggregate ticks into OHLC bars
+            const ohlcBars = [];
+            let currentBar = { open: null, high: null, low: null, close: null, volume: 0 };
+            let currentBarStartTime = new Date(startDateTime).getTime();
+
+            tickData.forEach((tick) => {
+                const tickTimestamp = new Date(tick.time*1000).getTime();
+
+                // If the tick is outside the current bar's interval, finalize the current bar
+                if (tickTimestamp >= currentBarStartTime + intervalMs) {
+                    if (currentBar.open !== null) {
+                        ohlcBars.push({ ...currentBar, timestamp: currentBarStartTime });
+                    }
+                    // Start a new bar
+                    currentBarStartTime += intervalMs;
+                    currentBar = { open: null, high: null, low: null, close: null, volume: 0 };
+                }
+
+                // Update the current bar
+                const price = tick.price;
+                const size = tick.size;
+
+                currentBar.open = currentBar.open ?? price;
+                currentBar.high = currentBar.high !== null ? Math.max(currentBar.high, price) : price;
+                currentBar.low = currentBar.low !== null ? Math.min(currentBar.low, price) : price;
+                currentBar.close = price;
+                currentBar.volume += size;
+            });
+
+            // Add the final bar if it has data
+            if (currentBar.open !== null) {
+                ohlcBars.push({ ...currentBar, timestamp: currentBarStartTime });
+            }
+
+            console.log(`Generated ${ohlcBars.length} OHLC bars for ${symbol}`);
+            return ohlcBars;
+        } catch (error) {
+            console.error(`Error building OHLC for ${symbol}:`, error.message);
+            throw error;
+        }
+    }
+
+
+    parseDurationToMilliseconds(duration) {
+        const [value, unit] = duration.split(" ");
+        const multiplier = {
+            S: 1000, // Seconds
+            M: 60 * 1000, // Minutes
+            H: 60 * 60 * 1000, // Hours
+            D: 24 * 60 * 60 * 1000, // Days
+            W: 7 * 24 * 60 * 60 * 1000, // Weeks
+        }[unit.toUpperCase()];
+
+        if (!multiplier) {
+            throw new Error(`Invalid duration unit: ${unit}`);
+        }
+
+        return parseInt(value, 10) * multiplier;
+    }
+
+    parseBarSizeToMilliseconds(barSize) {
+        const [value, unit] = barSize.split(" ");
+        const multiplier = {
+            secs: 1000, // Seconds
+            min: 60 * 1000, // Minutes
+            hour: 60 * 60 * 1000, // Hours
+        }[unit.toLowerCase()];
+
+        if (!multiplier) {
+            throw new Error(`Invalid bar size unit: ${unit}`);
+        }
+
+        return parseInt(value, 10) * multiplier;
+    }
+
 
     // Order Management
 
@@ -398,13 +509,19 @@ export class MarketDataStreamer {
     }
 }
 
-//
+
 // (async () => {
 //     const marketDataStreamer = new MarketDataStreamer();
 //
 //     try {
-//         const ohlcData = await marketDataStreamer.fetchOHLC("AAPL", "1 min");
-//         console.log("Fetched OHLC data:", ohlcData);
+//         // const symbol = "AAPL";
+//         // const startDateTime = "20241220-14:30:00"; // 09:30:00 US/Eastern == 14:30:00 UTC
+//         // const barSize = "1 min";
+//         // const ohlcData = await marketDataStreamer.buildOHLCFromTicks(symbol, "3 D", barSize);
+//         // for(let i=0; i<ohlcData.length; i++) {
+//         //     console.log(`O: ${ohlcData[i].open} H: ${ohlcData[i].high} L: ${ohlcData[i].low} C: ${ohlcData[i].close} V: ${ohlcData[i].volume} T: ${nyseTime(ohlcData[i].timestamp)}`);
+//         // }
+//         // console.log("Fetched OHLC data:", ohlcData);
 //     } catch (error) {
 //         console.error("Error fetching OHLC data:", error.message);
 //     }
