@@ -2,7 +2,7 @@ import { Client, Contract } from 'ib-tws-api';
 import appConfig from '../../config/AppConfig.mjs';
 import {getEntityLogger} from '../../utils/logger/loggerManager.mjs';
 import {nyseTime} from '../../utils/TimeFormatting.mjs';
-const appLog = getEntityLogger('app');
+const appLog = getEntityLogger('appLog');
 
 // const candleInterval = appConfig().dataSource.ibkr.candleInterval; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
 // const maxSamples = appConfig().dataSource.ibkr.maxSamples; // 'yahoo' or 'alpacaStream' or ibkr or backtesting

@@ -1,13 +1,7 @@
-// const yahooFinance = require('yahoo-finance2').default;
-// const {calculateIndicatorsExt} = require("../utils/TechUtils");
-// const getEntityLogger = require('../utils/logger/loggerManager');
-// const logger = getEntityLogger('analytics');
-// const appConfig = require('../config/config.json');
-
 import yahooFinance from 'yahoo-finance2';
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 
-const logger = getEntityLogger('analytics');
+const appLogger = getEntityLogger('appLog');
 import appConfig from '../config/AppConfig.mjs';
 // Algorithm Overview
 // 1. Identify Stocks with Potential for 4–5% Intraday Range
@@ -92,7 +86,7 @@ export async function identifyStocks (todaysEarningStocks) {
                     if (preMarketQuote.marketCap > billion) { // apply filter for market cap
                         if (thePrice &&
                             Math.abs(theChange) > 2) {
-                            logger.info(`
+                            appLogger.info(`
                           Stocks Selector: ${symbol}
                           Source: ${earningStocksMap[symbol] ? 'Earning' : 'Trending'}
                           Statistics:
@@ -115,15 +109,15 @@ export async function identifyStocks (todaysEarningStocks) {
                         }
                     }
                 } else {
-                    logger.info(`StocksSelector: ${symbol} has an ATR of ${atrPercentage} which is below the threshold`);
+                    appLogger.info(`StocksSelector: ${symbol} has an ATR of ${atrPercentage} which is below the threshold`);
                 }
             } catch (error) {
-                logger.info(`StocksSelector: Error analyzing ${symbol}: ${error}`);
+                appLogger.info(`StocksSelector: Error analyzing ${symbol}: ${error}`);
                 // console.log(`StocksSelector: Error analyzing ${symbol}: ${error}`);
             }
         }
     } catch (error) {
-        logger.info(`StocksSelector: Error: ${error}`);
+        appLogger.info(`StocksSelector: Error: ${error}`);
         // console.log(`StocksSelector: Error: ${error}`);
     }
     return candidates; // symbol, atrPercentage, preMarketChange

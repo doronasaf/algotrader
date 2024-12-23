@@ -14,8 +14,7 @@ import {BudgetManager} from "../utils/BudgetManager.jsm.js";
 
 const appConf = appConfig();
 const transactionLog = getEntityLogger('transactions');
-const analyticsLog = getEntityLogger('analytics');
-const appLog = getEntityLogger('app');
+const appLog = getEntityLogger('appLog');
 
 const workers = new Map(); // Map to track workers by stock symbol {symbol: {worker, params}}
 const stopFlags = new Map(); // Map to track stop flags by stock symbol
@@ -162,7 +161,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                         strategy: selectedAnalyzer.toString()
                                     };
                                     if (appConf.app.disableTrading === true) {
-                                        analyticsLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
+                                        appLog.info(`Ticker ${ticker} | In demo mode. Skipping order placement.`);
                                         trx.status = "Demo Buy";
                                         phase = "C"; // Skip execution monitoring and exit
                                     } else {
@@ -174,7 +173,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                     await writeToLog(ticker, orderResult, tradeOrders, sentTransactions, trx);
                                 } else {
                                     let {availableBudget, allocatedBudget} = await budgetManager.getBudgetInfo();
-                                    analyticsLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Source: ${params.source} | Required Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient. Quit buying`);
+                                    appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Source: ${params.source} | Required Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient. Quit buying`);
                                 }
                             } else {
                                 appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}`);
@@ -193,7 +192,6 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                     case "C": // Cleanup
                         appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer?.toString()} | End of trading session`);
                         budgetManager.releaseBudget(params.capital);
-                        // await stopMarketData(ticker); // keep the data for future use
                         return;
 
                     case "E": // Execution Monitoring
@@ -207,6 +205,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                             let allFilled = false;
                             for (const order of openOrders) {
                                 if (appConf.dataSource.provider === 'ibkr') {
+                                    appLog.info(`Ticker ${ticker} | IBKR Orders: ${JSON.stringify(order)}`);
                                     if (order.order.status === "Filled") {
                                         allFilled = true;
                                     } else {
@@ -215,13 +214,15 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                 } else {
                                     if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
                                         timeoutInterval = regularInterval;
-                                        transactionLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
+                                        appLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
+                                        transactionLog.info(JSON.stringify(order));
                                         phase = "C";
                                     } else if (order.type === "bracket") {
                                         if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
                                             timeoutInterval = regularInterval;
                                             phase = "C";
-                                            transactionLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
+                                            appLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
+                                            transactionLog.info(JSON.stringify(order));
                                         }
                                     }
                                 }

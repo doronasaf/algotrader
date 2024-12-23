@@ -1,12 +1,3 @@
-// const getEntityLogger = require('../utils/logger/loggerManager');
-// const { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} = require("../broker/alpaca/tradeService");
-// const { MarketAnalyzerFactory, TradingStrategy } = require("../strategies/MarketAnalyzerFactory");
-// const { fetchMarketData } = require("../broker/MarketDataFetcher");
-// const {tradingConfig, isWithinTradingHours} = require("../utils/TradingHours");
-// const {identifyStocks} = require("../stockInfo/StocksSelector");
-// const {fetchEarnings} = require("../stockInfo/StockCalender");
-// const logger = getEntityLogger('transactions');
-// const analytics = getEntityLogger('analytics');
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders } from "../broker/alpaca/tradeService.mjs";
 import { MarketAnalyzerFactory, TradingStrategy } from "../strategies/MarketAnalyzerFactory.mjs";

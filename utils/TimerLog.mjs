@@ -1,8 +1,5 @@
-// const getEntityLogger = require('./logger/loggerManager');
-// const appLogger = getEntityLogger('app');
-// const appConfig = require('../config/config.json');
 import {getEntityLogger} from './logger/loggerManager.mjs';
-const appLogger = getEntityLogger('app');
+const appLogger = getEntityLogger('appLog');
 import appConfig from '../config/AppConfig.mjs';
 const appConf = appConfig();
 
