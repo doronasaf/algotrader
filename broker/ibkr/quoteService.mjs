@@ -536,11 +536,6 @@ export class MarketDataStreamer {
 }
 
 
-(async () => {
-    const marketDataStreamer = new MarketDataStreamer();
-    const pos = await marketDataStreamer.getOpenPositions();
-    console.log("Open positions:", pos);
-})();
 
 //     try {
 //         // const symbol = "AAPL";
