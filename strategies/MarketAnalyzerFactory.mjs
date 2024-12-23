@@ -4,9 +4,11 @@ import {CombinedMomentumStrategy} from "./CombinedMomentumStrategy.mjs";
 import {CombinedMomentumWithWeightsStrategy} from "./CombinedMomentumWithWeightsStrategy.mjs";
 import {KeltnerChannelsStrategy} from "./KeltnerChannelsStrategy.mjs";
 import {TrendMomentumBreakoutStrategy} from "./TrendMomentumBreakoutStrategy.mjs";
+import {TrendMomentumBreakoutStrategySLAdjust} from "./TrendMomentumBreakoutStrategySLAdjust.mjs";
 
 export const TradingStrategy = {
     TrendMomentumBreakoutStrategy: "TrendMomentumBreakoutStrategy",
+    TrendMomentumBreakoutStrategySLAdjust: "TrendMomentumBreakoutStrategySLAdjust",
     // CombinedWithWeightMomentum : "CombinedMomentumWithWeightsStrategy",
     // CombinedMomentum : "CombinedMomentumStrategy",
     // BullishMomentum : "BullishMomentumStrategy",
@@ -30,6 +32,8 @@ export class MarketAnalyzerFactory {
                 return new KeltnerChannelsStrategy(symbol, marketData, support, resistance, params);
             case TradingStrategy.TrendMomentumBreakoutStrategy:
                  return new TrendMomentumBreakoutStrategy(symbol, marketData, support, resistance, params, appConf);
+            case TradingStrategy.TrendMomentumBreakoutStrategySLAdjust:
+                return new TrendMomentumBreakoutStrategySLAdjust(symbol, marketData, support, resistance, params, appConf);
             default:
                 throw new Error(`Unknown analyzer type: ${tradingStrategy}`);
         }

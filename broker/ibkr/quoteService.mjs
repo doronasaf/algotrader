@@ -507,12 +507,41 @@ export class MarketDataStreamer {
             return order;
         });
     }
+
+
+    async fetchExecutionsForSymbol(symbol) {
+        try {
+            // Define the execution filter for the symbol
+            const executionFilter = {
+                symbol, // Filter by the specific symbol (e.g., "AAPL")
+            };
+
+            // Fetch executions
+            // not implemented in ib-tws-api
+            const executions = await this.api.reqExecutions(executionFilter);
+
+            // Log results
+            if (executions && executions.length > 0) {
+                console.log(`Executions for ${symbol}:`, executions);
+            } else {
+                console.log(`No executions found for ${symbol}.`);
+            }
+
+            return executions;
+        } catch (error) {
+            console.error(`Error fetching executions for ${symbol}:`, error.message);
+            throw error;
+        }
+    }
 }
 
 
-// (async () => {
-//     const marketDataStreamer = new MarketDataStreamer();
-//
+(async () => {
+    const marketDataStreamer = new MarketDataStreamer();
+    const pos = await marketDataStreamer.getOpenPositions();
+    console.log("Open positions:", pos);
+})();
+
 //     try {
 //         // const symbol = "AAPL";
 //         // const startDateTime = "20241220-14:30:00"; // 09:30:00 US/Eastern == 14:30:00 UTC

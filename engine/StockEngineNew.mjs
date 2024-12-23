@@ -258,6 +258,18 @@ const selectStocks = async (maxNumberOfStocks) => {
     return combinedList.slice(0, numberOfStocks); // maximum 9 stocks
 }
 
+/** read from google sheet */
+const readFromExternalSource = async () => {
+    console.log("Refresh from google sheets");
+    let stockList = await fetchCSV(appConf.dataSource.google_sheets.url);
+    stockList.splice(appConf.dataSource.google_sheets.maxSymbols);
+    for (let i = 0; i < stockList.length; i++) {
+        if (!stockList[i][0]) continue;
+        const symbol = stockList[i][0];
+        let strategyType = TradingStrategy.TrendMomentumBreakoutStrategy;
+        tryRunWorker({symbol, source: "google_sheet"}, strategyType);
+    }
+}
 
 /**
  * Worker Logic
@@ -300,6 +312,7 @@ const startCLI = () => {
               - stop [symbol]: Stop a worker for a specific stock.
               - list List all active workers.
               - transactions : List all transactions.
+              - open-orders : List all open orders.
               - stop-engine : Gracefully stop the engine and all workers.
               - refresh-stocks : Refresh the list of stock.
               - refresh-ext-stocks : Refresh the list of stock from external source.
@@ -367,16 +380,7 @@ const startCLI = () => {
                 break;
 
             case "refresh-ext-stocks":
-                console.log("Refresh from google sheets");
-                let stockList = await fetchCSV(appConf.dataSource.google_sheets.url);
-                stockList.splice(appConf.dataSource.google_sheets.maxSymbols);
-                for (let i = 0; i < stockList.length; i++) {
-                    if (!stockList[i][0]) continue;
-                    const symbol = stockList[i][0];
-                    const strategy = stockList[i][1];
-                    let strategyType = TradingStrategy.TrendMomentumBreakoutStrategy;
-                    tryRunWorker({symbol, source: "google_sheet"}, strategyType);
-                }
+                await readFromExternalSource();
                 break;
 
             case "add-budget":
@@ -417,7 +421,11 @@ const startCLI = () => {
                 }
                 rl.close();
                 break;
-
+            case "open-orders":
+                const openOrders = await getOrders();
+                console.log("Open Orders:");
+                console.table(openOrders);
+                break;
             default:
                 console.log("Unknown command. Type 'help' for available commands.");
         }
@@ -443,6 +451,7 @@ function tryRunWorker(stockCandidate, strategyType) {
 
 const engine = async () => {
     try {
+        await readFromExternalSource();
         const maxStockToFetch = appConf.stockSelector.maxNumberOfStocks || 0;
         while (running) {
             if (workers.size === 0 && maxStockToFetch > 0) {
@@ -470,6 +479,7 @@ export async function main() {
     console.log("Starting engine...");
     startCLI(); // Start the CLI interface
     await engine(); // Start the engine
+    console.log("Goodbye ...");
 }
 
 // module.exports = { main };

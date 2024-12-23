@@ -2,7 +2,7 @@ import { EMA, RSI, ATR, VWAP, MACD, BollingerBands } from 'technicalindicators';
 import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 const analyticsLogger = getEntityLogger('analytics');
-const appLogger = getEntityLogger('app');
+const appLogger = getEntityLogger('appLog');
 
 export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     constructor(symbol, marketData, support, resistance, params, appConfig) {
@@ -146,7 +146,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     calculateKeltnerChannels(highs, lows, closes) {
         // Input validation
         if (!Array.isArray(highs) || !Array.isArray(lows) || !Array.isArray(closes)) {
-            throw new Error("Input data must be arrays.");
+            throw new Error(`Ticker ${this.symbol} Input data must be arrays.`);
         }
         if (highs.length < this.keltnerAtrPeriod || lows.length < this.keltnerAtrPeriod || closes.length < this.keltnerAtrPeriod) {
             throw new Error(`Insufficient data. At least ${this.keltnerAtrPeriod} data points are required.`);
@@ -168,7 +168,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
         // Validate intermediate values
         if (trimmedMiddleLine.some((val) => isNaN(val)) || trimmedATR.some((val) => isNaN(val))) {
-            console.error("Intermediate values contain NaN. Check input data or calculation logic.");
+            appLogger.info(`Ticker ${this.symbol} Intermediate values contain NaN. Check input data or calculation logic.`);
             return { middleLine: [], upperBand: [], lowerBand: [] };
         }
 
@@ -230,7 +230,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
     calculateCMF(closes, highs, lows, volumes, period = 20) {
         if (!closes || !highs || !lows || !volumes || closes.length < period) {
-            throw new Error("Insufficient data for CMF calculation");
+            throw new Error(`Ticker ${this.symbol} Insufficient data for CMF calculation`);
         }
 
         let moneyFlowVolumeSum = 0;
@@ -257,7 +257,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         // Ensure we have enough data for analysis
         if (!bollingerBands || bollingerBands.length === 0) {
             appLogger.info(`Ticker: ${this.symbol} | Bollinger Bands calculation failed, not enough data`);
-            throw new Error("Insufficient data for Bollinger Bands evaluation");
+            throw new Error(`Ticker ${this.symbol} Insufficient data for Bollinger Bands evaluation`);
         }
 
         // Get the latest Bollinger Band values

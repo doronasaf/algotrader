@@ -14,8 +14,8 @@ export default function appConfig() {
         },
         "trading": {
             "minimumGain" : 6, // minimum gain for trade 6$
-            "budget": 42000,
-            "singleTradeCapital": 1000,
+            "budget": 40000,
+            "singleTradeCapital": 2000,
             "takeProfit": 1.006,
             "stopLoss": 0.99
         },
@@ -38,11 +38,15 @@ export default function appConfig() {
 
                 takeProfitMultiplier: 1.45, // ATR multiplier for take-profit - WAS 1.5.
                 stopLossMultiplier: 0.75, // ATR multiplier for stop-loss
-                takeProfitMaxPrecent: 0.015, // maximum percent of take profit (4%)
-                stopLossMaxPercent: 0.01125, // maximum percent of stop loss (3%)
+                takeProfitMaxPrecent: 0.015, // maximum percent of take profit (1.5%)
+                stopLossMaxPercent: 0.01125, // maximum percent of stop loss (1.25%) => 0.0175
 
                 lowRsiBearishThreshold: 30, // for short term; long term is 45
                 highRsiBulishThreshold: 50, // for short term; long term is 60
+            },
+            TrendMomentumBreakoutStrategySLAdjust: {
+                stopLossMultiplier: 1,// ATR multiplier for stop-loss higher than normal
+                stopLossMaxPercent: 0.01175 // maximum percent of stop loss (1.75%)
             }
         },
         "dataSource": {

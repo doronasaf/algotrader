@@ -34,3 +34,18 @@ Make sure the remote URL is set to use SSH:
     git remote -v
 If the URL starts with https://, it means you're using HTTPS instead of SSH. To fix this:
     git remote set-url origin git@github.com:username/repository.git
+
+
+Node Troubleshooting Guide
+
+When getting warning message from Node, run:
+    node --no-deprecation yourScript.js
+
+installing newer version of problematic lib:
+    npm outdated
+    npm update
+    npm install whatwg-url@latest
+
+Check Dependent Libraries:
+    npm ls whatwg-url
+
