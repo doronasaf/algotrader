@@ -2,6 +2,7 @@ import { Client, Contract } from 'ib-tws-api';
 import appConfig from '../../config/AppConfig.mjs';
 import {getEntityLogger} from '../../utils/logger/loggerManager.mjs';
 import {nyseTime} from '../../utils/TimeFormatting.mjs';
+import {getOrderById} from "../MarketDataFetcher.mjs";
 const appLog = getEntityLogger('appLog');
 
 // const candleInterval = appConfig().dataSource.ibkr.candleInterval; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
@@ -91,7 +92,7 @@ class OHLCAggregator {
 
 export class MarketDataStreamer {
     constructor() {
-        this.api = new Client({ host: '127.0.0.1', port: 4002 });
+        this.api = new Client({ host: '127.0.0.1', port: 4002 , clientId: 1});
         this.aggregators = {}; // Track OHLCAggregator instances by symbol
         this.orders = new Map(); // Store orders by their unique ID
         this.connected = false; // Track connection status
@@ -404,7 +405,7 @@ export class MarketDataStreamer {
     // Fetch order by ID
     async getOrderById(orderId) {
         return this.handleError(async () => {
-            const orders = await this.getOrders();
+            const orders = await this.api.getOrders();
             const order = orders.find((o) => o.orderId === orderId);
             if (!order) {
                 throw new Error(`Order with ID ${orderId} not found`);
@@ -439,6 +440,7 @@ export class MarketDataStreamer {
             // Parent order (limit order)
             const parentOrder = {
                 orderId: parentOrderId,
+                account: appConfig().dataSource.ibkr.account,
                 action: "BUY",
                 orderType: "LMT",
                 totalQuantity: quantity,
@@ -449,6 +451,7 @@ export class MarketDataStreamer {
             // Take-profit order
             const takeProfitOrder = {
                 orderId: takeProfitOrderId,
+                account: appConfig().dataSource.ibkr.account,
                 action: "SELL",
                 orderType: "LMT",
                 totalQuantity: quantity,
@@ -460,6 +463,7 @@ export class MarketDataStreamer {
             // Stop-loss order
             const stopLossOrder = {
                 orderId: stopLossOrderId,
+                account: appConfig().dataSource.ibkr.account,
                 action: "SELL",
                 orderType: "STP",
                 totalQuantity: quantity,
@@ -491,6 +495,7 @@ export class MarketDataStreamer {
                 action: action.toUpperCase(), // "BUY" or "SELL"
                 orderType: orderType.toUpperCase(), // "LMT" (limit), "MKT" (market), etc.
                 totalQuantity: quantity,
+                account: appConfig().dataSource.ibkr.account,
             };
 
             // Add price fields for limit or stop orders
@@ -536,17 +541,17 @@ export class MarketDataStreamer {
 }
 
 
-
-//     try {
-//         // const symbol = "AAPL";
-//         // const startDateTime = "20241220-14:30:00"; // 09:30:00 US/Eastern == 14:30:00 UTC
-//         // const barSize = "1 min";
-//         // const ohlcData = await marketDataStreamer.buildOHLCFromTicks(symbol, "3 D", barSize);
-//         // for(let i=0; i<ohlcData.length; i++) {
-//         //     console.log(`O: ${ohlcData[i].open} H: ${ohlcData[i].high} L: ${ohlcData[i].low} C: ${ohlcData[i].close} V: ${ohlcData[i].volume} T: ${nyseTime(ohlcData[i].timestamp)}`);
-//         // }
-//         // console.log("Fetched OHLC data:", ohlcData);
-//     } catch (error) {
-//         console.error("Error fetching OHLC data:", error.message);
+// (async () => {
+//     const marketDataStreamer = new MarketDataStreamer();
+//     const openOrders = await marketDataStreamer.getOpenOrders();
+//     console.log(JSON.stringify(openOrders));
+//
+//     const bracket = await marketDataStreamer.setBracketOrder('AAPL', 1, 256, 259, 250);
+//     const bracketOrderIds = Object.values(bracket);
+//     for (const orderId of bracketOrderIds) {
+//         const order = await marketDataStreamer.getOpenOrders();
+//         if (order) {
+//             console.log(JSON.stringify(order));
+//         }
 //     }
 // })();

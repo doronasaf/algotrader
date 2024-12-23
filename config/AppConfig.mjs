@@ -68,6 +68,7 @@ export default function appConfig() {
                 "maxSamples": 120, // 20 minutes (120 * 10s)
                 "minSamples": 33,
                 "takeProfitMultipler": 1.45,
+                "account": "DUE737784",
             }
         }
     };

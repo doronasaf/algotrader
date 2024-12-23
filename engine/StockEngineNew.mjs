@@ -2,7 +2,7 @@ import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 // import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
 import {MarketAnalyzerFactory, TradingStrategy} from "../strategies/MarketAnalyzerFactory.mjs";
-import {fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders} from "../broker/MarketDataFetcher.mjs";
+import {fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders, getOrderById} from "../broker/MarketDataFetcher.mjs";
 import {tradingConfig, isWithinTradingHours} from "../utils/TradingHours.mjs";
 import {identifyStocks} from "../stockInfo/StocksSelector.mjs";
 import {fetchEarnings} from "../stockInfo/StockCalender.mjs";
@@ -166,6 +166,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                         phase = "C"; // Skip execution monitoring and exit
                                     } else {
                                         orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
+                                        trx.orderResults = orderResult;
                                         // const orderResult = await buyStock(ticker, shares, "limit", close);
                                         timeoutInterval = monitoringInterval;
                                         phase = "E"; // Move to Execution Monitoring
@@ -195,6 +196,20 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         return;
 
                     case "E": // Execution Monitoring
+                        const bracketOrderIds = Object.values(orderResult);
+                        for (const orderId of bracketOrderIds) {
+                            const order = await getOrderById(orderId);
+                            if (order){
+                                transactionLog.info(JSON.stringify(order));
+                                console.log(`Order status: ${order.status}`);
+                                if (order.status === "Filled") {
+                                    appLog.info(`Ticker ${ticker} | Order Filled: ${JSON.stringify(order)}`);
+                                    phase = "C"; // Move to Exit Strategy
+                                }
+                            } else {
+                                appLog.info(`Ticker ${ticker} | Order not found: ${orderId}`);
+                            }
+                        }
                         const openOrders = await getOrders();
                         if (openOrders.length === 0) {
                             appLog.info(`Ticker ${ticker} | No open positions. Restarting strategy.`);
