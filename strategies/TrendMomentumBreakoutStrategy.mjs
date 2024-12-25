@@ -45,8 +45,9 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         this.stopLossMaxPercentAlt = appConfig.strategies.TrendMomentumBreakoutStrategySLAdjust.stopLossMaxPercent || 0.01175; // maximum percent of stop loss (3%)
 
         this.lowRsiBearishThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.lowRsiBearishThreshold || 30; // for short term; long term is 45
-        this.highRsiBulishThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.highRsiBulishThreshold || 50;// for short term; long term is 60
-        
+        this.lowRsiBulishThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.lowRsiBulishThreshold || 30;// for short term; long term is 60
+        this.highRsiBulishThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.highRsiBulishThreshold || 65;// for short term; long term is 60
+
         this.candleInterval = appConfig.dataSource.ibkr.candleInterval || 10000;
     }
 
@@ -322,7 +323,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             lastEMALong = emaLong[emaLong.length - 1];
 
             // Determine trading signals
-            isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && this.lastRSI > this.highRsiBulishThreshold;
+            isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && this.lastRSI >= this.lowRsiBulishThreshold && this.lastRSI <= this.highRsiBulishThreshold;
             isBearish = this.cmf < 0 && lastEMAShort < lastEMALong && this.lastRSI < this.lowRsiBearishThreshold;
         } catch (error) {
             // not enough data to calculate CMF
@@ -342,23 +343,56 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     evaluateHeikinAshi() {
         const heikinAshi = this.calculateHeikinAshi();
 
-        const lastClose = heikinAshi.closes[heikinAshi.closes.length - 1];
-        const lastOpen = heikinAshi.opens[heikinAshi.opens.length - 1];
-        const lastHigh = heikinAshi.highs[heikinAshi.highs.length - 1];
-        const lastLow = heikinAshi.lows[heikinAshi.lows.length - 1];
-
-        // Check for bullish signal: Green candle with no lower wick
-        if (lastClose > lastOpen && lastLow === Math.min(lastClose, lastOpen)) {
-            return 1; // Bullish
+        // Input validation
+        if (!heikinAshi || !heikinAshi.opens || !heikinAshi.closes || !heikinAshi.highs || !heikinAshi.lows) {
+            throw new Error(`Invalid Heikin-Ashi data for ${this.symbol}`);
         }
 
-        // Check for bearish signal: Red candle with no upper wick
-        if (lastClose < lastOpen && lastHigh === Math.max(lastClose, lastOpen)) {
+        if (heikinAshi.closes.length < 3) {
+            throw new Error(`Insufficient data for Heikin-Ashi evaluation for ${this.symbol}. At least 3 candles are required.`);
+        }
+
+        // Extract last three candles
+        const lastClose = heikinAshi.closes[heikinAshi.closes.length - 1];
+        const lastOpen = heikinAshi.opens[heikinAshi.opens.length - 1];
+        const lastLow = heikinAshi.lows[heikinAshi.lows.length - 1];
+
+        const prevClose = heikinAshi.closes[heikinAshi.closes.length - 2];
+        const prevOpen = heikinAshi.opens[heikinAshi.opens.length - 2];
+
+        const prevPrevClose = heikinAshi.closes[heikinAshi.closes.length - 3];
+        const prevPrevOpen = heikinAshi.opens[heikinAshi.opens.length - 3];
+
+        // Check for bullish signal
+        // Last candle is green with no lower wick
+        const lastCandleGreen = lastClose > lastOpen && lastLow === lastOpen;
+
+        // Previous two candles are also green
+        const prevCandleGreen = prevClose > prevOpen;
+        const prevPrevCandleGreen = prevPrevClose > prevPrevOpen;
+
+        this.numOfGrennCandlesInARaw = 0;
+        if (lastCandleGreen && prevCandleGreen && prevPrevCandleGreen) {
+            this.numOfGrennCandlesInARaw = 3;
+            return 1; // Bullish
+        } else if (lastCandleGreen && prevCandleGreen) {
+            this.numOfGrennCandlesInARaw = 2;
+            return 1; // Bullish
+        } else if (lastCandleGreen) {
+            this.numOfGrennCandlesInARaw = 1;
+            return 1; // Bullish
+        }
+        // Check for bearish signal: Red candle with no upper wick and previous two candles are red
+        const lastHigh = heikinAshi.highs[heikinAshi.highs.length - 1];
+        const lastCandleRed = lastClose < lastOpen && lastHigh === lastOpen;
+
+        if (lastCandleRed) {
             return -1; // Bearish
         }
 
-        return 0; // Hold/Neutral
+        return 0; // Neutral
     }
+
 
     evaluateEMA() {
         const { closes } = this.marketData;
@@ -464,8 +498,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const calculatedStopLossAlt = Math.min(entryPrice - this.stopLossMultiplierAlt * lastATR, vwap);
         const calculatedTakeProfit = entryPrice + this.takeProfitMultiplier * lastATR;
 
-        let stopLoss = Math.max(calculatedStopLoss, (1-this.stopLossMaxPercent) * entryPrice);
-        let stopLossAlt = Math.max(calculatedStopLossAlt, (1-this.stopLossMaxPercentAlt) * entryPrice);
+        let stopLoss = Math.min(calculatedStopLoss, (1-this.stopLossMaxPercent) * entryPrice);
+        let stopLossAlt = Math.min(calculatedStopLossAlt, (1-this.stopLossMaxPercentAlt) * entryPrice);
         let takeProfit = Math.min(calculatedTakeProfit, (1+this.takeProfitMaxPrecent) * entryPrice);
         if (stopLoss < calculatedStopLoss) {
             appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Stop Loss adjusted from ${calculatedStopLoss} to ${stopLoss}`);
@@ -513,7 +547,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                     emaShortPeriod: this.emaShortPeriod,
                     emaLongPeriod: this.emaLongPeriod,
                     lastRSI: this.lastRSI,
-                    highRsiBulishThreshold: this.highRsiBulishThreshold,
+                    rsiBullishRange: `[${this.lowRsiBulishThreshold}-${this.highRsiBulishThreshold}]`,
+                    rsiBearishRange: `[0-${this.lowRsiBearishThreshold}] or [>${this.highRsiBulishThreshold}]`,
                     vwap: this.vwap,
                     vwapScore: vwapSignal,
                     rvol: this.rvol,
@@ -524,6 +559,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                     macdScore: macdSignal,
                     keltnerScore: keltnerSignal,
                     heikinAshiScore: heikinAshiSignal,
+                    heikinAshiSeqOfGreenCandles: this.numOfGrennCandlesInARaw,
                     cmf: this.cmf,
                     cmfScore: cmfSignal,
                     bollingerSignal: this.bollingerSignalDesc,

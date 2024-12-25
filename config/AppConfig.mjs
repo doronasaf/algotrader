@@ -42,7 +42,8 @@ export default function appConfig() {
                 stopLossMaxPercent: 0.01125, // maximum percent of stop loss (1.25%) => 0.0175
 
                 lowRsiBearishThreshold: 30, // for short term; long term is 45
-                highRsiBulishThreshold: 50, // for short term; long term is 60
+                lowRsiBulishThreshold: 30, // for short term; long term is 60
+                highRsiBulishThreshold: 65, // for short term; long term is 60
             },
             TrendMomentumBreakoutStrategySLAdjust: {
                 stopLossMultiplier: 1,// ATR multiplier for stop-loss higher than normal
