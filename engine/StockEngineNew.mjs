@@ -2,7 +2,7 @@ import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 // import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
 import {MarketAnalyzerFactory, TradingStrategy} from "../strategies/MarketAnalyzerFactory.mjs";
-import {fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders, getOrderById} from "../broker/MarketDataFetcher.mjs";
+import {fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders, monitorBracketOrder} from "../broker/MarketDataFetcher.mjs";
 import {tradingConfig, isWithinTradingHours} from "../utils/TradingHours.mjs";
 import {identifyStocks} from "../stockInfo/StocksSelector.mjs";
 import {fetchEarnings} from "../stockInfo/StockCalender.mjs";
@@ -26,7 +26,8 @@ global.budgetManager = new BudgetManager(appConf.trading.budget);
 const defTradingParams = {
     capital: appConf.trading.singleTradeCapital,
     takeProfit: appConf.trading.takeProfit,
-    stopLoss: appConf.trading.stopLoss
+    stopLoss: appConf.trading.stopLoss,
+    tradeTime: undefined,
 }; // Default parameters
 
 
@@ -37,22 +38,13 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     let capital = params.capital; // Initial capital
     let position = 0; // Number of shares held
     const regularInterval = appConf.app.disableTrading ? appConf.dataSource.testFetchInterval : appConf.dataSource.fetchInterval;//2000;
-    const monitoringInterval = 60000;
+    const monitoringInterval = 60000, nextTradeInterval = 1000 * 60 * 30; // 30 minutes
     let timeoutInterval = regularInterval;
     const timerLog = new TimerLog();
     const analyzersList = [];
     let selectedAnalyzer;
     let accumulationAchieved, breakoutConfirmed, potentialGain, potentialLoss, orderResult;
     let budgetAllocationSucceeded = false;
-
-    // seeting the right take profit multiplier based on the data source provider
-    if (appConf.dataSource.provider === 'yahoo') {
-        params.takeProfitMultiplier = appConf.dataSource.yahoo.takeProfitMultipler;
-    } else if (appConf.dataSource.provider === 'ibkr') {
-        params.takeProfitMultiplier = appConf.dataSource.ibkr.takeProfitMultipler;
-    } else {
-        // default
-    }
 
     for (const session in tradingConfig) {
         if (session !== "market") continue;
@@ -167,6 +159,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                     } else {
                                         orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
                                         trx.orderResults = orderResult;
+                                        params.tradeTime = Date.now();
                                         // const orderResult = await buyStock(ticker, shares, "limit", close);
                                         timeoutInterval = monitoringInterval;
                                         phase = "E"; // Move to Execution Monitoring
@@ -196,49 +189,25 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         return;
 
                     case "E": // Execution Monitoring
-                        const bracketOrderIds = Object.values(orderResult);
-                        for (const orderId of bracketOrderIds) {
-                            const order = await getOrderById(orderId);
-                            if (order){
-                                transactionLog.info(JSON.stringify(order));
-                                console.log(`Order status: ${order.status}`);
-                                if (order.status === "Filled") {
-                                    appLog.info(`Ticker ${ticker} | Order Filled: ${JSON.stringify(order)}`);
-                                    phase = "C"; // Move to Exit Strategy
-                                }
+                        if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
+                            if (appConf.dataSource.provider === 'ibkr') {
+                                appLog.info(`Ticker ${ticker} | IBKR Orders: ${JSON.stringify(orderResults)}`);
+                                const executionResults = await monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId]);
+                                // executionResults.parentOrdrId.orderId;status // TODO
+                                // executionResults.childOrders;orderId;status
+                                phase = "C";
                             } else {
-                                appLog.info(`Ticker ${ticker} | Order not found: ${orderId}`);
-                            }
-                        }
-                        const openOrders = await getOrders();
-                        if (openOrders.length === 0) {
-                            appLog.info(`Ticker ${ticker} | No open positions. Restarting strategy.`);
-                            if (sentTransactions.length > 0) appLog.info(`Sent Transactions: ${JSON.stringify(sentTransactions)}`);
-                            timeoutInterval = regularInterval;
-                            phase = "C"; // Exit the strategy
-                        } else {
-                            let allFilled = false;
-                            for (const order of openOrders) {
-                                if (appConf.dataSource.provider === 'ibkr') {
-                                    appLog.info(`Ticker ${ticker} | IBKR Orders: ${JSON.stringify(order)}`);
-                                    if (order.order.status === "Filled") {
-                                        allFilled = true;
-                                    } else {
-                                        allFilled = false;
-                                    }
-                                } else {
-                                    if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
+                                if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
+                                    timeoutInterval = regularInterval;
+                                    appLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
+                                    transactionLog.info(JSON.stringify(order));
+                                    phase = "C";
+                                } else if (order.type === "bracket") {
+                                    if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
                                         timeoutInterval = regularInterval;
-                                        appLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
-                                        transactionLog.info(JSON.stringify(order));
                                         phase = "C";
-                                    } else if (order.type === "bracket") {
-                                        if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
-                                            timeoutInterval = regularInterval;
-                                            phase = "C";
-                                            appLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
-                                            transactionLog.info(JSON.stringify(order));
-                                        }
+                                        appLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
+                                        transactionLog.info(JSON.stringify(order));
                                     }
                                 }
                             }
@@ -287,6 +256,17 @@ const readFromExternalSource = async () => {
     }
 }
 
+function checkWorkerLastTrade (symbol) {
+    const {params} = workers.get(symbol)  || {};
+    if (params?.tradeTime) { // there was a trade for this symbol
+        const tradeDurationInMinutes = (Date.now() - (params.tradeTime || 0)) / 1000 / 60;
+        if (tradeDurationInMinutes >= 30) {
+            appLog.info(`Cleaning up worker for ${symbol} after ${tradeDurationInMinutes} mins`);
+            workers.delete(symbol); // Cleanup worker
+            stopFlags.delete(symbol); // Cleanup stop flag
+        }
+    }
+}
 /**
  * Worker Logic
  */
@@ -299,7 +279,9 @@ const createWorker = (symbol, params) => {
             console.error(`Error in worker for ${symbol}: ${error.message}`);
             appLog.info(`Error in worker for ${symbol}: ${error.message}, Releasing budget: ${params.capital}`);
         } finally {
-            workers.delete(symbol); // Cleanup worker
+            if (!params.tradeTime) { // there was no trade
+                workers.delete(symbol); // Cleanup worker
+            }
             stopFlags.delete(symbol); // Cleanup stop flag
         }
     };
@@ -326,34 +308,30 @@ const startCLI = () => {
             Available Commands:
               - start [symbol] [strategy]: Start a worker for a specific stock.
               - stop [symbol]: Stop a worker for a specific stock.
-              - list List all active workers.
-              - transactions : List all transactions.
-              - open-orders : List all open orders.
+              - ls List all active workers.
+              - trx : List all transactions.
+              - orders : List all open orders.
               - stop-engine : Gracefully stop the engine and all workers.
               - refresh-stocks : Refresh the list of stock.
               - refresh-ext-stocks : Refresh the list of stock from external source.
-              - add-budget [amount]: Add budget to the engine.
-              - budget-info: Get budget information.
+              - budget-add [amount]: Add budget to the engine.
+              - budget-i: Get budget information.
               - help: Display this help message.
                     `);
                 break;
 
             case "start":
-                if (!args[0] && !args[1]) {
-                    console.log("Usage: start [symbol] [strategy]");
+                if (!args[0]) {
+                    console.log("Usage: start [symbol]");
                     break;
                 }
                 const symbol = args[0].toUpperCase();
-                const strategy = args[1];
+                checkWorkerLastTrader(symbol);
                 if (workers.has(symbol)) {
                     console.log(`Worker for ${symbol} is already running.`);
                     break;
                 }
-                if (!strategyTypes.includes(strategy)) {
-                    console.log(`Unknown strategy: ${strategy}`);
-                    break;
-                }
-                const params = {ticker: symbol, type: strategy, source: "Manual(CLI)", ...defTradingParams}; // Default strategy
+                const params = {ticker: symbol, type: '', source: "Manual(CLI)", ...defTradingParams}; // Default strategy
                 workers.set(symbol, {params});
                 stopFlags.set(symbol, false); // Initialize stop flag
                 const worker = createWorker(symbol, params);
@@ -374,7 +352,7 @@ const startCLI = () => {
                 }
                 break;
 
-            case "list":
+            case "ls":
                 console.log("Active Workers:");
                 counter = 0;
                 for (const [symbol, {params}] of workers) {
@@ -399,7 +377,7 @@ const startCLI = () => {
                 await readFromExternalSource();
                 break;
 
-            case "add-budget":
+            case "budget-add":
                 if (!args[0]) {
                     console.log("Usage: add-budget [amount]");
                     break;
@@ -414,12 +392,12 @@ const startCLI = () => {
                 console.log(`Budget increased by ${amount}. Total budget: ${JSON.stringify(budgetInfo)}`);
                 break;
 
-            case "budget-info":
+            case "budget-i":
                 budgetInfo = await budgetManager.getBudgetInfo();
                 console.log(`Budget info: ${JSON.stringify(budgetInfo)}`);
                 break;
 
-            case "transactions":
+            case "trx":
                 console.log("Sent Transactions:");
                 console.table(sentTransactions);
                 console.log("Trade Orders: TBD");
@@ -450,8 +428,8 @@ const startCLI = () => {
 
 function tryRunWorker(stockCandidate, strategyType) {
     const symbol = stockCandidate.symbol;
+    checkWorkerLastTrade(symbol);
     if (!workers.has(symbol)) {
-
         console.log(`Spawning worker for ${symbol}`);
         const params = {ticker: symbol, type: strategyType, source: stockCandidate.source, ...defTradingParams}; // Default parameters
         const worker = createWorker(symbol, params);

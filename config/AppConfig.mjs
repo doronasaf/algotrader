@@ -25,7 +25,7 @@ export default function appConfig() {
                 emaLongPeriod: 21, // used in CMF
                 rsiPeriod: 7,   // used in CMF
                 bollingerRSIPeriod: 10,
-                KeltnerAtrPeriod: 30,
+                keltnerAtrPeriod: 30,
                 rvolThreshold: 1.2, // Minimum RVOL for a valid signal
 
                 macdFastPeriod: 5,
@@ -49,7 +49,7 @@ export default function appConfig() {
                 stopLossMaxPercent: 0.01175 // maximum percent of stop loss (1.75%)
             }
         },
-        "dataSource": {
+        dataSource: {
             "fetchInterval": 1000, // was 5000
             "testFetchInterval": 5000,
             "provider": "ibkr",
@@ -63,12 +63,13 @@ export default function appConfig() {
             "yahoo": {
                 "takeProfitMultipler": 1.45
             },
-            "ibkr": {
+            ibkr: {
                 "candleInterval": 10000,//was 10000
                 "maxSamples": 120, // 20 minutes (120 * 10s)
                 "minSamples": 33,
                 "takeProfitMultipler": 1.45,
                 "account": "DUE737784",
+                "liveAccount": "",
             }
         }
     };

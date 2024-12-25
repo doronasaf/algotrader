@@ -1,6 +1,7 @@
 import { EMA, RSI, ATR, VWAP, MACD, BollingerBands } from 'technicalindicators';
 import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
+import {nyseTime} from "../utils/TimeFormatting.mjs";
 const analyticsLogger = getEntityLogger('analytics');
 const appLogger = getEntityLogger('appLog');
 
@@ -14,7 +15,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         this.emaLongPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.emaLongPeriod || 21;
         this.rsiPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.rsiPeriod || 7;
         this.bollingerRSIPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.bollingerRSIPeriod || 14;
-        this.KeltnerAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.KeltnerAtrPeriod || 30;
+        this.keltnerAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.keltnerAtrPeriod || 30;
         this.rvolThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.rvolThreshold || 1.2; // Minimum RVOL for a valid signal
 
         // MACD uses:
@@ -45,6 +46,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
         this.lowRsiBearishThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.lowRsiBearishThreshold || 30; // for short term; long term is 45
         this.highRsiBulishThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.highRsiBulishThreshold || 50;// for short term; long term is 60
+        
+        this.candleInterval = appConfig.dataSource.ibkr.candleInterval || 10000;
     }
 
     calculateEMA(closes, period) {
@@ -495,8 +498,11 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Score: ${totalScore} Target Score: ${signals.length} | Breakdown - VWAP: ${vwapSignal}, MACD: ${macdSignal}, Keltner: ${keltnerSignal}, RVOL: ${rvolSignal}, Heikin-Ashi: ${heikinAshiSignal}, CMF: ${cmfSignal}`);
             if (totalScore >= 4) {
                 this.calculateMargins();
+                let signalAgeInMin = this.marketData.closes.length * this.candleInterval / 1000 / 60;
                 let buySignal = {
+                    timestamp: nyseTime(),
                     symbol: this.symbol,
+                    ageMins: signalAgeInMin,
                     strategy: 'TrendMomentumBreakoutStrategy',
                     status: 'Buy',
                     shares: this.margins.shares,

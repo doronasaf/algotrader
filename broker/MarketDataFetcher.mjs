@@ -88,30 +88,21 @@ export async function getOrders() {
     }
 }
 
-// Expose getOpenPositions function
-export async function getOpenPositions() {
-    try {
-        return marketDataStreamer.getOpenPositions();
-    } catch (error) {
-        appLog.info("Error fetching open positions:", error.message);
-    }
-}
-
-// Expose getOrderById function
-export async function getOrderById(orderId) {
-    try {
-        return marketDataStreamer.getOrderById(orderId);
-    } catch (error) {
-        appLog.info(`Error fetching order by ID (${orderId}):`, error.message);
-    }
-}
-
 // Expose setBracketOrder function
 export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice) {
     try {
         return await marketDataStreamer.setBracketOrder(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice);
     } catch (error) {
         appLog.info(`Error placing bracket order for ${symbol}:`, error.message);
+    }
+}
+
+export async function monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval = 30000, timeout = 3600000){
+    try {
+
+        return await marketDataStreamer.monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval, timeout);
+    } catch (error) {
+        appLog.info(`Error monitoring bracket order for ${parentOrderId}:`, error.message);
     }
 }
 

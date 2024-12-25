@@ -38,7 +38,13 @@ function logToCSV(inputLogFile, outputCsvFile) {
 }
 
 // Example usage
-const fileName = 'transactions_23_12_2024.log';
-const inputLogFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${fileName}`; // Replace with your input file
-const outputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${fileName}_output.csv`; // Replace with your desired output file
+const txfileName = 'transactions_24_12_2024.log';
+let inputLogFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${txfileName}`; // Replace with your input file
+let outputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${txfileName}_output.csv`; // Replace with your desired output file
 logToCSV(inputLogFile, outputCsvFile);
+
+const anafileName = 'analytics_24_12_2024.log';
+inputLogFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${anafileName}`; // Replace with your input file
+outputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${anafileName}_output.csv`; // Replace with your desired output file
+logToCSV(inputLogFile, outputCsvFile);
+

@@ -2,7 +2,6 @@ import { Client, Contract } from 'ib-tws-api';
 import appConfig from '../../config/AppConfig.mjs';
 import {getEntityLogger} from '../../utils/logger/loggerManager.mjs';
 import {nyseTime} from '../../utils/TimeFormatting.mjs';
-import {getOrderById} from "../MarketDataFetcher.mjs";
 const appLog = getEntityLogger('appLog');
 
 // const candleInterval = appConfig().dataSource.ibkr.candleInterval; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
@@ -386,31 +385,19 @@ export class MarketDataStreamer {
     async getOpenOrders() {
         return this.handleError(async () => {
             const openOrders = await this.api.getAllOpenOrders();
-            openOrders.forEach((order) => {
-                this.orders.set(order.orderId, {
-                    orderId: order.orderId,
-                    symbol: order.contract.symbol,
-                    action: order.action,
-                    totalQuantity: order.totalQuantity,
-                    orderType: order.orderType,
-                    lmtPrice: order.lmtPrice,
-                    auxPrice: order.auxPrice,
-                    status: "open",
+            openOrders.forEach((openOrder) => {
+                this.orders.set(openOrder.order.orderId, {
+                    orderId: openOrder.order.orderId,
+                    symbol: openOrder.contract.symbol,
+                    action: openOrder.order.action,
+                    totalQuantity: openOrder.order.totalQuantity,
+                    orderType: openOrder.order.orderType,
+                    lmtPrice: openOrder.order.lmtPrice,
+                    auxPrice: openOrder.order.auxPrice,
+                    status: openOrder?.orderState?.status,
                 });
             });
             return Array.from(this.orders.values());
-        });
-    }
-
-    // Fetch order by ID
-    async getOrderById(orderId) {
-        return this.handleError(async () => {
-            const orders = await this.api.getOrders();
-            const order = orders.find((o) => o.orderId === orderId);
-            if (!order) {
-                throw new Error(`Order with ID ${orderId} not found`);
-            }
-            return order;
         });
     }
 
@@ -445,7 +432,7 @@ export class MarketDataStreamer {
                 orderType: "LMT",
                 totalQuantity: quantity,
                 lmtPrice: limitPrice,
-                transmit: false, // Do not transmit until children are ready
+                transmit: true, // transmit the parent order
             };
 
             // Take-profit order
@@ -469,19 +456,20 @@ export class MarketDataStreamer {
                 totalQuantity: quantity,
                 auxPrice: stopLossPrice, // Stop-loss trigger price
                 parentId: parentOrderId,
-                transmit: true, // Transmit all orders as a group
+                transmit: true, // Transmit takeProfit and StopLoss orders as a group
             };
 
             // Place orders in sequence
-            await this.api.placeOrder({ contract, order: parentOrder });
-            await this.api.placeOrder({ contract, order: takeProfitOrder });
-            await this.api.placeOrder({ contract, order: stopLossOrder });
+            const retParentOrderId =  await this.api.placeOrder({ contract, order: parentOrder });
+            await sleep(500);
+            const retTakeProfitId =  await this.api.placeOrder({ contract, order: takeProfitOrder });
+            const retStopLossOrderId = await this.api.placeOrder({ contract, order: stopLossOrder });
 
             appLog.info(`Bracket order placed for ${symbol}`);
             parentOrder.symbol = symbol;
-            parentOrder.orderId = parentOrderId;
-            takeProfitOrder.orderId = takeProfitOrderId;
-            stopLossOrder.orderId = stopLossOrderId;
+            parentOrder.orderId = retParentOrderId;
+            takeProfitOrder.orderId = retTakeProfitId;
+            stopLossOrder.orderId = retStopLossOrderId;
             return { parentOrder, takeProfitOrder, stopLossOrder };
         });
     }
@@ -538,20 +526,128 @@ export class MarketDataStreamer {
             throw error;
         }
     }
+
+    async cancelAllOrders() {
+        try {
+            await this.api.reqGlobalCancel();
+        } catch (error) {
+            console.error(`Error canceling all orders:`, error.message);
+        }
+    }
+
+    async monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval = 30000, timeout = 3600000) {
+        /**
+         * Monitors a bracket order, ensuring the parent order is filled first, and then tracking child orders.
+         *
+         * @param {Object} api - The IBKR API instance.
+         * @param {Number} parentOrderId - The order ID of the parent order.
+         * @param {Array} childOrderIds - Array of child order IDs (e.g., take-profit and stop-loss).
+         * @param {Number} pollingInterval - Time (in ms) between each status check.
+         * @param {Number} timeout - Maximum time (in ms) to wait for completion.
+         * @returns {Object} - Final status of the parent and child orders.
+         */
+        const startTime = Date.now();
+
+        // Monitor Parent Order
+        console.log(`Monitoring parent order: ${parentOrderId}`);
+        while (true) {
+            try {
+                const orders = await this.api.getAllOpenOrders();
+                const parentOrder = orders.find(order => order.order.orderId === parentOrderId);
+
+                if (!parentOrder) {
+                    throw new Error(`Parent order ${parentOrderId} not found.`);
+                }
+
+                console.log(`Parent Order Status: ${parentOrder.orderState.status}`);
+
+                // If parent order is filled, break to monitor child orders
+                if (parentOrder?.orderState?.status === "Filled") {
+                    console.log(`Parent order ${parentOrderId} filled.`);
+                    break;
+                }
+
+                // If parent order is canceled, exit early
+                if (parentOrder?.orderState?.status === "Cancelled") {
+                    console.log(`Parent order ${parentOrderId} canceled.`);
+                    return { parentOrder, childOrders: [] };
+                }
+
+                // Check timeout
+                if (Date.now() - startTime > timeout) {
+                    throw new Error(`Timeout waiting for parent order ${parentOrderId} to fill.`);
+                }
+
+                // Wait for the polling interval
+                await new Promise(resolve => setTimeout(resolve, pollingInterval));
+            } catch (error) {
+                console.error(`Error monitoring parent order: ${error.message}`);
+                throw error;
+            }
+        }
+
+        // Monitor Child Orders
+        console.log(`Monitoring child orders: ${childOrderIds.join(", ")}`);
+        const monitoredChildren = new Set();
+
+        while (monitoredChildren.size < childOrderIds.length) {
+            try {
+                const orders = await api.getAllOpenOrders();
+                const childOrders = orders.filter(order => childOrderIds.includes(order.order.orderId));
+
+                childOrders.forEach(childOrder => {
+                    console.log(`Child Order ${childOrder.order.orderId} Status: ${childOrder?.orderState?.status}`);
+
+                    if (childOrder?.orderState?.status === "Filled") {
+                        console.log(`Child order ${childOrder.order.orderId} filled.`);
+                        monitoredChildren.add(childOrder.order.orderId);
+                    } else if (childOrder?.orderState?.status === "Cancelled") {
+                        console.log(`Child order ${childOrder.order.orderId} canceled.`);
+                        monitoredChildren.add(childOrder.order.orderId);
+                    }
+                });
+
+                // Exit if both child orders are either filled or canceled
+                if (monitoredChildren.size === childOrderIds.length) {
+                    console.log("All child orders processed.");
+                    return {
+                        parentOrder: { orderId: parentOrderId, status: "Filled" },
+                        childOrders: childOrders.map(o => ({ orderId: o.order.orderId, status: o.orderState.status })),
+                    };
+                }
+
+                // Check timeout
+                if (Date.now() - startTime > timeout) {
+                    throw new Error("Timeout waiting for child orders to complete.");
+                }
+
+                // Wait for the polling interval
+                await new Promise(resolve => setTimeout(resolve, pollingInterval));
+            } catch (error) {
+                console.error(`Error monitoring child orders: ${error.message}`);
+                throw error;
+            }
+        }
+    }
 }
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // (async () => {
 //     const marketDataStreamer = new MarketDataStreamer();
+//     await marketDataStreamer.cancelAllOrders();
 //     const openOrders = await marketDataStreamer.getOpenOrders();
 //     console.log(JSON.stringify(openOrders));
-//
-//     const bracket = await marketDataStreamer.setBracketOrder('AAPL', 1, 256, 259, 250);
-//     const bracketOrderIds = Object.values(bracket);
-//     for (const orderId of bracketOrderIds) {
-//         const order = await marketDataStreamer.getOpenOrders();
-//         if (order) {
-//             console.log(JSON.stringify(order));
-//         }
+//     for (const order of openOrders) {
+//         // const retStatus  = await marketDataStreamer.cancelOrder(order.orderId);
+//         console.log(JSON.stringify(order));
 //     }
+//
+//     // const orderResults = await marketDataStreamer.setBracketOrder('DKNG', 1, 40, 41, 38);
+//     // console.log(JSON.stringify(orderResults));
+//     // if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
+//     //     await marketDataStreamer.monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId]);
+//     // }
 // })();

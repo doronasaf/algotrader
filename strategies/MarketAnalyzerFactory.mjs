@@ -8,7 +8,7 @@ import {TrendMomentumBreakoutStrategySLAdjust} from "./TrendMomentumBreakoutStra
 
 export const TradingStrategy = {
     TrendMomentumBreakoutStrategy: "TrendMomentumBreakoutStrategy",
-    TrendMomentumBreakoutStrategySLAdjust: "TrendMomentumBreakoutStrategySLAdjust",
+    // TrendMomentumBreakoutStrategySLAdjust: "TrendMomentumBreakoutStrategySLAdjust",
     // CombinedWithWeightMomentum : "CombinedMomentumWithWeightsStrategy",
     // CombinedMomentum : "CombinedMomentumStrategy",
     // BullishMomentum : "BullishMomentumStrategy",
