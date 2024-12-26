@@ -321,10 +321,11 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
             lastEMAShort = emaShort[emaShort.length - 1];
             lastEMALong = emaLong[emaLong.length - 1];
+            this.emaShortIsBiggerThenLong = lastEMAShort > lastEMALong;
 
             // Determine trading signals
             isBullish = this.cmf > 0 && lastEMAShort > lastEMALong && this.lastRSI >= this.lowRsiBulishThreshold && this.lastRSI <= this.highRsiBulishThreshold;
-            isBearish = this.cmf < 0 && lastEMAShort < lastEMALong && this.lastRSI < this.lowRsiBearishThreshold;
+            isBearish = this.cmf < 0 && lastEMAShort < lastEMALong && (this.lastRSI < this.lowRsiBearishThreshold || this.lastRSI > this.highRsiBulishThreshold);
         } catch (error) {
             // not enough data to calculate CMF
             appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | API: evaluateCMFStrategy | Error: ${error.message}`);
@@ -544,8 +545,9 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                     stopLoss: this.margins.stopLoss,
                     stopLossAlt: this.margins.stopLossAlt,
                     takeProfit: this.margins.takeProfit,
-                    emaShortPeriod: this.emaShortPeriod,
-                    emaLongPeriod: this.emaLongPeriod,
+                    cmf: this.cmf,
+                    cmfScore: cmfSignal,
+                    emaShortIsBiggerThenLong: this.emaShortIsBiggerThenLong,
                     lastRSI: this.lastRSI,
                     rsiBullishRange: `[${this.lowRsiBulishThreshold}-${this.highRsiBulishThreshold}]`,
                     rsiBearishRange: `[0-${this.lowRsiBearishThreshold}] or [>${this.highRsiBulishThreshold}]`,
@@ -560,8 +562,6 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                     keltnerScore: keltnerSignal,
                     heikinAshiScore: heikinAshiSignal,
                     heikinAshiSeqOfGreenCandles: this.numOfGrennCandlesInARaw,
-                    cmf: this.cmf,
-                    cmfScore: cmfSignal,
                     bollingerSignal: this.bollingerSignalDesc,
                     bollingerScore: bullingerSignal
                 }

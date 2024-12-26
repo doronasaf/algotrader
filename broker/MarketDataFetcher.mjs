@@ -99,7 +99,6 @@ export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeP
 
 export async function monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval = 30000, timeout = 3600000){
     try {
-
         return await marketDataStreamer.monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval, timeout);
     } catch (error) {
         appLog.info(`Error monitoring bracket order for ${parentOrderId}:`, error.message);

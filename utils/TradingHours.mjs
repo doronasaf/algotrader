@@ -26,7 +26,19 @@ export function isWithinTradingHours(config) {
     return currentTime >= startTime && currentTime <= endTime;
 }
 
-// module.exports = {
-//     isWithinTradingHours,
-//     tradingConfig,
-// };
+/**
+ * returns the time until the market closes in milliseconds
+ * @returns {number}
+ */
+export function timeUntilMarketClose() {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const utcMinute = now.getUTCMinutes();
+    const currentTime = utcHour * 60 + utcMinute;
+
+    const [endHour, endMinute] = tradingConfig.afterHours.startTime.split(":").map(Number);
+
+    const endTime = endHour * 60 + endMinute;
+
+    return (endTime - currentTime) * 60 * 1000;
+}

@@ -109,8 +109,8 @@ export class MarketDataStreamer {
                 this.reconnect();
             }
         } catch (error) {
-            console.error("Error initializing connection:", error.message);
-            console.error(error.stack);
+            appLog.info("Error initializing connection:", error.message);
+            appLog.info(error.stack);
             this.connected = false;
             this.reconnect(); // Attempt to reconnect
         }
@@ -129,7 +129,7 @@ export class MarketDataStreamer {
         try {
             return await method(...args);
         } catch (error) {
-            console.error(`Error in ${method.name}:`, error.message);
+            appLog.info(`Error in ${method.name}:`, error.message);
 
             // Reconnect logic if the error is connection-related
             if (error.message.includes("disconnected") || !this.connected) {
@@ -171,13 +171,13 @@ export class MarketDataStreamer {
             });
 
             stream.on("error", (err) => {
-                console.error(`Stream Error for ${symbol}:`, err.message);
+                appLog.info(`Stream Error for ${symbol}:`, err.message);
                 this.retrySymbolInitialization(symbol, callback, 5000);
             });
 
             appLog.info(`Started tracking symbol: ${symbol}`);
         } catch (error) {
-            console.error(`Error adding symbol ${symbol}:`, error.message);
+            appLog.info(`Error adding symbol ${symbol}:`, error.message);
             setTimeout(() => this.addSymbol(symbol, callback), 5000);
         }
     }
@@ -220,7 +220,7 @@ export class MarketDataStreamer {
             delete this.aggregators[symbol];
             appLog.info(`Stopped tracking symbol: ${symbol}`);
         } catch (error) {
-            console.error(`Error stopping tracking for symbol ${symbol}:`, error.message);
+            appLog.info(`Error stopping tracking for symbol ${symbol}:`, error.message);
         }
     }
 
@@ -263,10 +263,10 @@ export class MarketDataStreamer {
                 volume: bar.volume,
             }));
 
-            console.log(`Fetched ${ohlcData.length} bars for ${symbol}`);
+            appLog.info(`Fetched ${ohlcData.length} bars for ${symbol}`);
             return ohlcData;
         } catch (error) {
-            console.error(`Error fetching OHLC data for ${symbol}:`, error.message);
+            appLog.info(`Error fetching OHLC data for ${symbol}:`, error.message);
             throw error;
         }
     }
@@ -299,7 +299,7 @@ export class MarketDataStreamer {
                 throw new Error(`No tick data available for ${symbol}`);
             }
 
-            console.log(`Fetched ${tickData.length} ticks for ${symbol}`);
+            appLog.info(`Fetched ${tickData.length} ticks for ${symbol}`);
 
             // Define the aggregation interval in milliseconds (e.g., 1-minute = 60000 ms)
             const intervalMs = this.parseBarSizeToMilliseconds(barSize);
@@ -338,10 +338,10 @@ export class MarketDataStreamer {
                 ohlcBars.push({ ...currentBar, timestamp: currentBarStartTime });
             }
 
-            console.log(`Generated ${ohlcBars.length} OHLC bars for ${symbol}`);
+            appLog.info(`Generated ${ohlcBars.length} OHLC bars for ${symbol}`);
             return ohlcBars;
         } catch (error) {
-            console.error(`Error building OHLC for ${symbol}:`, error.message);
+            appLog.info(`Error building OHLC for ${symbol}:`, error.message);
             throw error;
         }
     }
@@ -515,14 +515,14 @@ export class MarketDataStreamer {
 
             // Log results
             if (executions && executions.length > 0) {
-                console.log(`Executions for ${symbol}:`, executions);
+                appLog.info(`Executions for ${symbol}:`, executions);
             } else {
-                console.log(`No executions found for ${symbol}.`);
+                appLog.info(`No executions found for ${symbol}.`);
             }
 
             return executions;
         } catch (error) {
-            console.error(`Error fetching executions for ${symbol}:`, error.message);
+            appLog.info(`Error fetching executions for ${symbol}:`, error.message);
             throw error;
         }
     }
@@ -531,103 +531,121 @@ export class MarketDataStreamer {
         try {
             await this.api.reqGlobalCancel();
         } catch (error) {
-            console.error(`Error canceling all orders:`, error.message);
+            appLog.info(`Error canceling all orders:`, error.message);
         }
     }
 
     async monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval = 30000, timeout = 3600000) {
-        /**
-         * Monitors a bracket order, ensuring the parent order is filled first, and then tracking child orders.
-         *
-         * @param {Object} api - The IBKR API instance.
-         * @param {Number} parentOrderId - The order ID of the parent order.
-         * @param {Array} childOrderIds - Array of child order IDs (e.g., take-profit and stop-loss).
-         * @param {Number} pollingInterval - Time (in ms) between each status check.
-         * @param {Number} timeout - Maximum time (in ms) to wait for completion.
-         * @returns {Object} - Final status of the parent and child orders.
-         */
-        const startTime = Date.now();
+        return this.handleError(async () => {
+            /**
+             * Monitors a bracket order, ensuring the parent order is filled first, and then tracking child orders.
+             *
+             * @param {Number} parentOrderId - The order ID of the parent order.
+             * @param {Array} childOrderIds - Array of child order IDs (e.g., take-profit and stop-loss).
+             * @param {Number} pollingInterval - Time (in ms) between each status check.
+             * @param {Number} timeout - Maximum time (in ms) to wait for completion.
+             * @returns {Object} - Final status of the parent and child orders.
+             */
+            const startTime = Date.now();
 
-        // Monitor Parent Order
-        console.log(`Monitoring parent order: ${parentOrderId}`);
-        while (true) {
-            try {
-                const orders = await this.api.getAllOpenOrders();
-                const parentOrder = orders.find(order => order.order.orderId === parentOrderId);
+            // Monitor Parent Order
+            appLog.info(`Monitoring parent order: ${parentOrderId}`);
+            let retried = false;
+            const retOrders = {
+                parentOrder: {orderId: parentOrderId, status: ""},
+                childOrders: [],
+            };
+            while (true) {
+                try {
+                    let orders = await this.api.getAllOpenOrders();
+                    let parentOrder = orders.find(order => order.order.orderId === parentOrderId);
 
-                if (!parentOrder) {
-                    throw new Error(`Parent order ${parentOrderId} not found.`);
-                }
-
-                console.log(`Parent Order Status: ${parentOrder.orderState.status}`);
-
-                // If parent order is filled, break to monitor child orders
-                if (parentOrder?.orderState?.status === "Filled") {
-                    console.log(`Parent order ${parentOrderId} filled.`);
-                    break;
-                }
-
-                // If parent order is canceled, exit early
-                if (parentOrder?.orderState?.status === "Cancelled") {
-                    console.log(`Parent order ${parentOrderId} canceled.`);
-                    return { parentOrder, childOrders: [] };
-                }
-
-                // Check timeout
-                if (Date.now() - startTime > timeout) {
-                    throw new Error(`Timeout waiting for parent order ${parentOrderId} to fill.`);
-                }
-
-                // Wait for the polling interval
-                await new Promise(resolve => setTimeout(resolve, pollingInterval));
-            } catch (error) {
-                console.error(`Error monitoring parent order: ${error.message}`);
-                throw error;
-            }
-        }
-
-        // Monitor Child Orders
-        console.log(`Monitoring child orders: ${childOrderIds.join(", ")}`);
-        const monitoredChildren = new Set();
-
-        while (monitoredChildren.size < childOrderIds.length) {
-            try {
-                const orders = await api.getAllOpenOrders();
-                const childOrders = orders.filter(order => childOrderIds.includes(order.order.orderId));
-
-                childOrders.forEach(childOrder => {
-                    console.log(`Child Order ${childOrder.order.orderId} Status: ${childOrder?.orderState?.status}`);
-
-                    if (childOrder?.orderState?.status === "Filled") {
-                        console.log(`Child order ${childOrder.order.orderId} filled.`);
-                        monitoredChildren.add(childOrder.order.orderId);
-                    } else if (childOrder?.orderState?.status === "Cancelled") {
-                        console.log(`Child order ${childOrder.order.orderId} canceled.`);
-                        monitoredChildren.add(childOrder.order.orderId);
+                    if (!parentOrder) {
+                        if (!retried) {
+                            retried = true;
+                            await sleep(500);
+                            continue;
+                        }
+                        throw new Error(`Parent order ${parentOrderId} not found.`);
                     }
-                });
 
-                // Exit if both child orders are either filled or canceled
-                if (monitoredChildren.size === childOrderIds.length) {
-                    console.log("All child orders processed.");
-                    return {
-                        parentOrder: { orderId: parentOrderId, status: "Filled" },
-                        childOrders: childOrders.map(o => ({ orderId: o.order.orderId, status: o.orderState.status })),
-                    };
+                    appLog.info(`Parent Order Status: ${parentOrder.orderState.status}`);
+
+                    // If parent order is filled, break to monitor child orders
+                    if (parentOrder?.orderState?.status === "Filled") {
+                        appLog.info(`Parent order ${parentOrderId} filled.`);
+                        retOrders.parentOrder.status = "Filled";
+                        break;
+                    }
+
+                    // If parent order is canceled, exit early
+                    if (parentOrder?.orderState?.status === "Cancelled") {
+                        appLog.info(`Parent order ${parentOrderId} canceled.`);
+                        retOrders.parentOrder.status = "Cancelled";
+                        return retOrders;
+                    }
+
+                    // Check timeout
+                    if (Date.now() - startTime > timeout) {
+                        throw new Error(`Timeout waiting for parent order ${parentOrderId} to fill.`);
+                    }
+
+                    // Wait for the polling interval
+                    await new Promise(resolve => setTimeout(resolve, pollingInterval));
+                } catch (error) {
+                    appLog.info(`Error monitoring parent order: ${error.message}`);
+                    throw error;
                 }
-
-                // Check timeout
-                if (Date.now() - startTime > timeout) {
-                    throw new Error("Timeout waiting for child orders to complete.");
-                }
-
-                // Wait for the polling interval
-                await new Promise(resolve => setTimeout(resolve, pollingInterval));
-            } catch (error) {
-                console.error(`Error monitoring child orders: ${error.message}`);
-                throw error;
             }
-        }
+
+            // Monitor Child Orders
+            appLog.info(`Monitoring child orders: ${childOrderIds.join(", ")}`);
+            const monitoredChildren = new Set();
+
+            while (monitoredChildren.size < childOrderIds.length) {
+                try {
+                    const orders = await api.getAllOpenOrders();
+                    const childOrders = orders.filter(order => childOrderIds.includes(order.order.orderId));
+
+                    childOrders.forEach(childOrder => {
+                        appLog.info(`Child Order ${childOrder.order.orderId} Status: ${childOrder?.orderState?.status}`);
+
+                        if (childOrder?.orderState?.status === "Filled") {
+                            appLog.info(`Child order ${childOrder.order.orderId} filled.`);
+                            monitoredChildren.add(childOrder.order.orderId);
+                        } else if (childOrder?.orderState?.status === "Cancelled") {
+                            appLog.info(`Child order ${childOrder.order.orderId} canceled.`);
+                            monitoredChildren.add(childOrder.order.orderId);
+                        }
+                    });
+
+                    // Exit if both child orders are either filled or canceled
+                    if (monitoredChildren.size === childOrderIds.length) {
+                        appLog.info("All child orders processed.");
+                        retOrders.childOrders = childOrders.map(o => ({
+                            orderId: o.order.orderId,
+                            status: o.orderState.status
+                        }));
+                        return retOrders;
+                    }
+
+                    // Check timeout
+                    if (Date.now() - startTime > timeout) {
+                        throw new Error("Timeout waiting for child orders to complete.");
+                    }
+
+                    // Wait for the polling interval
+                    await new Promise(resolve => setTimeout(resolve, pollingInterval));
+                } catch (error) {
+                    appLog.info(`Error monitoring child orders: ${error.message}`);
+                    retOrders.childOrders = childOrders.map(o => ({
+                        orderId: o.order.orderId,
+                        status: o.orderState.status
+                    }));
+                    return retOrders;
+                }
+            }
+        });
     }
 }
 
@@ -639,14 +657,14 @@ function sleep(ms) {
 //     const marketDataStreamer = new MarketDataStreamer();
 //     await marketDataStreamer.cancelAllOrders();
 //     const openOrders = await marketDataStreamer.getOpenOrders();
-//     console.log(JSON.stringify(openOrders));
+//     appLog.info(JSON.stringify(openOrders));
 //     for (const order of openOrders) {
 //         // const retStatus  = await marketDataStreamer.cancelOrder(order.orderId);
-//         console.log(JSON.stringify(order));
+//         appLog.info(JSON.stringify(order));
 //     }
 //
 //     // const orderResults = await marketDataStreamer.setBracketOrder('DKNG', 1, 40, 41, 38);
-//     // console.log(JSON.stringify(orderResults));
+//     // appLog.info(JSON.stringify(orderResults));
 //     // if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
 //     //     await marketDataStreamer.monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId]);
 //     // }

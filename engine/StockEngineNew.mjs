@@ -3,7 +3,7 @@ import appConfig from '../config/AppConfig.mjs';
 // import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
 import {MarketAnalyzerFactory, TradingStrategy} from "../strategies/MarketAnalyzerFactory.mjs";
 import {fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders, monitorBracketOrder} from "../broker/MarketDataFetcher.mjs";
-import {tradingConfig, isWithinTradingHours} from "../utils/TradingHours.mjs";
+import {tradingConfig, isWithinTradingHours, timeUntilMarketClose} from "../utils/TradingHours.mjs";
 import {identifyStocks} from "../stockInfo/StocksSelector.mjs";
 import {fetchEarnings} from "../stockInfo/StockCalender.mjs";
 import readline from "readline";
@@ -192,9 +192,26 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
                             if (appConf.dataSource.provider === 'ibkr') {
                                 appLog.info(`Ticker ${ticker} | IBKR Orders: ${JSON.stringify(orderResults)}`);
-                                const executionResults = await monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId]);
-                                // executionResults.parentOrdrId.orderId;status // TODO
-                                // executionResults.childOrders;orderId;status
+                                const monitoringTime = timeUntilMarketClose();
+                                const pollingInterval = 60000;
+                                const executionResults = await monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId], pollingInterval, monitoringTime);
+
+                                if (executionResults?.parentOrder?.status === "Filled" ) {
+                                    executionResults.parentOrder.name = "Parent Order";
+                                    tradeOrders.push(executionResults.parentOrder);
+                                    const takeProfitOrderResult = executionResults.childOrders.find(order => order.orderId === orderResults.takeProfitOrder.orderId);
+                                    const stopLossOrderResult = executionResults.childOrders.find(order => order.orderId === orderResults.stopLossOrder.orderId);
+                                    if (takeProfitOrderResult && takeProfitOrderResult.status === "Filled") {
+                                        takeProfitOrderResult.name = "Take Profit Order";
+                                        tradeOrders.push(takeProfitOrderResult);
+                                    } else if (stopLossOrderResult && stopLossOrderResult.status === "Filled") {
+                                        stopLossOrderResult.name = "Stop Loss Order";
+                                        tradeOrders.push(stopLossOrderResult);
+                                    } else {
+                                        appLog.info(`Ticker ${ticker} | Bracket Order No Children Return Status: ${JSON.stringify(executionResults)}`);
+                                        transactionLog.info(JSON.stringify(executionResults));
+                                    }
+                                }
                                 phase = "C";
                             } else {
                                 if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
@@ -397,11 +414,11 @@ const startCLI = () => {
                 console.log(`Budget info: ${JSON.stringify(budgetInfo)}`);
                 break;
 
-            case "trx":
+            case "ls-trx":
                 console.log("Sent Transactions:");
                 console.table(sentTransactions);
-                console.log("Trade Orders: TBD");
-                // console.table(tradeOrders);
+                console.log("Trade Orders:");
+                console.table(tradeOrders);
                 break;
 
             case "stop-engine":
