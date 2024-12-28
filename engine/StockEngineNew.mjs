@@ -42,7 +42,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     const timerLog = new TimerLog();
     const analyzersList = [];
     let selectedAnalyzer;
-    let accumulationAchieved, breakoutConfirmed, potentialGain, potentialLoss, orderResult;
+    let accumulationAchieved, breakoutConfirmed, potentialGain, potentialLoss, orderResults;
     let budgetAllocationSucceeded = false;
 
     for (const session in tradingConfig) {
@@ -157,14 +157,14 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                         trx.status = "Demo Buy";
                                         phase = "C"; // Skip execution monitoring and exit
                                     } else {
-                                        orderResult = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
-                                        trx.orderResults = orderResult;
+                                        orderResults = await setBracketOrdersForBuy(ticker, shares, close, takeProfit, stopLoss);
+                                        trx.orderResults = orderResults;
                                         params.tradeTime = Date.now();
-                                        // const orderResult = await buyStock(ticker, shares, "limit", close);
+                                        // const orderResults = await buyStock(ticker, shares, "limit", close);
                                         timeoutInterval = monitoringInterval;
                                         phase = "E"; // Move to Execution Monitoring
                                     }
-                                    await writeToLog(ticker, orderResult, tradeOrders, sentTransactions, trx);
+                                    await writeToLog(ticker, orderResults, tradeOrders, sentTransactions, trx);
                                 } else {
                                     let {availableBudget, allocatedBudget} = await budgetManager.getBudgetInfo();
                                     appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Source: ${params.source} | Required Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient. Quit buying`);
@@ -189,7 +189,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         return;
 
                     case "E": // Execution Monitoring
-                        if (appConf.dataSource.provider === 'ibkr') {
+                        if (appConf.dataSource.tradingProvider === 'ibkr') {
                             if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
                                 appLog.info(`Ticker ${ticker} | IBKR Orders: ${JSON.stringify(orderResults)}`);
                                 const monitoringTime = timeUntilMarketClose();
@@ -214,18 +214,31 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                 }
                                 phase = "C";
                             }
-                        } else {
-                            if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
+                        } else if (appConf.dataSource.tradingProvider === 'alpaca'){
+                            if (orderResults?.order?.order_class === "single" && orderResults?.orderStatus?.status.toLowerCase() === "filled") {
                                 timeoutInterval = regularInterval;
-                                appLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
-                                transactionLog.info(JSON.stringify(order));
+                                appLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(orderResults.orderStatus)}`);
+                                transactionLog.info(JSON.stringify(orderResults));
                                 phase = "C";
-                            } else if (order.type === "bracket") {
-                                if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
-                                    timeoutInterval = regularInterval;
-                                    phase = "C";
-                                    appLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
-                                    transactionLog.info(JSON.stringify(order));
+                            } else if (orderResults?.orderStatus?.order_class === "bracket") {
+                                if (orderResults.orderStatus?.status === "filled") {
+                                    appLog.info(`Ticker ${ticker} | Bracket Order Limit (Parent) Filled: ${JSON.stringify(orderResults.order)}`);
+                                    if (orderResults.orderStatus?.legs) {
+                                        const takeProfitOrder = orderResults.orderStatus.legs.find(leg => leg.type === "limit");
+                                        const stopLossOrder = orderResults.orderStatus.legs.find(leg => leg.type === "stop");
+                                        if (takeProfitOrder?.status === "filled") {
+                                            appLog.info(`Ticker ${ticker} | Bracket Order Take Profit Filled: ${JSON.stringify(takeProfitOrder)}`);
+                                            transactionLog.info(JSON.stringify(takeProfitOrder));
+                                            timeoutInterval = regularInterval;
+                                            phase = "C";
+                                        }
+                                        if (stopLossOrder?.status === "filled") {
+                                            appLog.info(`Ticker ${ticker} | Bracket Order Stop Loss Filled: ${JSON.stringify(stopLossOrder)}`);
+                                            transactionLog.info(JSON.stringify(stopLossOrder));
+                                            timeoutInterval = regularInterval;
+                                            phase = "C";
+                                        }
+                                    }
                                 }
                             }
                         }
