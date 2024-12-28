@@ -30,17 +30,7 @@ export class IMarketAnalyzer {
     }
 
     calculateMargins() {
-        let close = this.marketData.closes[this.marketData.closes.length - 1];
-        const shares = Math.floor(this.params.capital / close);
-
-        const takeProfit = Math.floor(close * this.params.takeProfit * 100) / 100;
-        const stopLoss = Math.floor(close * this.params.stopLoss * 100) / 100;
-        close = Math.floor(close * 100) / 100;
-        this.margins.shares = shares;
-        this.margins.close = close;
-        this.margins.takeProfit = takeProfit;
-        this.margins.stopLoss = stopLoss;
-        return this.margins;
+        throw new Error('Method evaluateAccumulation must be implemented.');
     }
 
     getMargins() {

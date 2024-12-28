@@ -1,4 +1,5 @@
 import { Client, Contract } from 'ib-tws-api';
+import axios from 'axios';
 import appConfig from '../../config/AppConfig.mjs';
 import {getEntityLogger} from '../../utils/logger/loggerManager.mjs';
 import {nyseTime} from '../../utils/TimeFormatting.mjs';
@@ -410,7 +411,7 @@ export class MarketDataStreamer {
     }
 
     // Set a Bracket Order
-    async setBracketOrder(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice) {
+    async setBracketOrderDeprecated(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice) {
         return this.handleError(async () => {
             const contract = {
                 symbol,
@@ -432,7 +433,7 @@ export class MarketDataStreamer {
                 orderType: "LMT",
                 totalQuantity: quantity,
                 lmtPrice: limitPrice,
-                transmit: true, // transmit the parent order
+                transmit: false, // do not transmit the parent order
             };
 
             // Take-profit order
@@ -461,7 +462,7 @@ export class MarketDataStreamer {
 
             // Place orders in sequence
             const retParentOrderId =  await this.api.placeOrder({ contract, order: parentOrder });
-            await sleep(500);
+            await sleep(1000); // Wait for the parent order to be placed
             const retTakeProfitId =  await this.api.placeOrder({ contract, order: takeProfitOrder });
             const retStopLossOrderId = await this.api.placeOrder({ contract, order: stopLossOrder });
 
@@ -474,6 +475,92 @@ export class MarketDataStreamer {
         });
     }
 
+    async setBracketOrder(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice) {
+        /**
+         * Places a bracket order for a buy transaction.
+         * @param {string} symbol - The stock symbol.
+         * @param {number} quantity - Number of shares to buy.
+         * @param {number} limitPrice - Limit price for the parent order.
+         * @param {number} takeProfitPrice - Price at which to take profit.
+         * @param {number} stopLossPrice - Price at which to stop loss.
+         * @returns {Promise<Object>} - Returns the parent, take-profit, and stop-loss orders.
+         */
+        const BASE_URL = appConfig().dataSource.ibkr.portalGwBaseUrl; // IBKR Client Portal API base URL
+
+        try {
+            // Step 1: Get account details
+            // const accountResponse = await axios.get(`${BASE_URL}/account`);
+            // const accountId = accountResponse.data[0]?.accountId;
+            // if (!accountId) throw new Error("Unable to fetch account ID.");
+            const accountId = appConfig().dataSource.ibkr.account;
+
+            // Step 2: Get contract details for the symbol
+            const contractResponse = await axios.get(`${BASE_URL}/marketdata/symbols`, {params: {symbols: symbol}});
+            const conid = contractResponse.data[symbol]?.[0]?.conid;
+            if (!conid) throw new Error(`Unable to fetch contract ID for symbol: ${symbol}`);
+
+            // Step 3: Construct the parent order
+            const parentOrder = {
+                acctId: accountId,
+                conid,
+                orderType: "LMT", // Limit order
+                side: "BUY",
+                price: limitPrice,
+                quantity,
+                tif: "DAY", // Time in Force: Day order
+                transmit: false, // Do NOT Transmit immediately
+            };
+
+            // Step 4: Place the parent order
+            const parentOrderResponse = await axios.post(`${BASE_URL}/account/${accountId}/orders`, parentOrder);
+            const parentOrderId = parentOrderResponse.data.orderId;
+
+            // Step 5: Construct the take-profit order
+            const takeProfitOrder = {
+                acctId: accountId,
+                conid,
+                orderType: "LMT", // Limit order
+                side: "SELL",
+                price: takeProfitPrice,
+                quantity,
+                tif: "DAY",
+                parentId: parentOrderId, // Link to parent order
+                transmit: false, // Do NOT Transmit immediately
+            };
+
+            // Step 6: Place the take-profit order
+            const takeProfitOrderResponse = await axios.post(`${BASE_URL}/account/${accountId}/orders`, takeProfitOrder);
+            const takeProfitOrderId = takeProfitOrderResponse.data.orderId;
+
+            // Step 7: Construct the stop-loss order
+            const stopLossOrder = {
+                acctId: accountId,
+                conid,
+                orderType: "STP", // Stop order
+                side: "SELL",
+                auxPrice: stopLossPrice, // Stop price
+                quantity,
+                tif: "DAY",
+                parentId: parentOrderId, // Link to parent order
+                transmit: true, // Transmit immediately
+            };
+
+            // Step 8: Place the stop-loss order
+            const stopLossOrderResponse = await axios.post(`${BASE_URL}/account/${accountId}/orders`, stopLossOrder);
+            const stopLossOrderId = stopLossOrderResponse.data.orderId;
+
+            // Step 9: Return all placed orders
+            return {
+                parentOrder: {...parentOrder, orderId: parentOrderId},
+                takeProfitOrder: {...takeProfitOrder, orderId: takeProfitOrderId},
+                stopLossOrder: {...stopLossOrder, orderId: stopLossOrderId},
+            };
+        } catch (error) {
+            appLog.info(`Error placing bracket order for ${symbol}:`, error.message);
+            console.log(`Error placing bracket order for ${symbol}:`, error.message);
+            throw error;
+        }
+    }
     // Place an order
     async placeOrder(symbol, action, quantity, orderType, price = null) {
         return this.handleError(async () => {
@@ -563,13 +650,14 @@ export class MarketDataStreamer {
                     if (!parentOrder) {
                         if (!retried) {
                             retried = true;
-                            await sleep(500);
+                            await sleep(250);
                             continue;
                         }
-                        throw new Error(`Parent order ${parentOrderId} not found.`);
+                        // throw new Error(`Parent order ${parentOrderId} not found.`); // TODO FIX THIS ASAF
+                        appLog.info(`Parent order ${parentOrderId} not found.`);
                     }
 
-                    appLog.info(`Parent Order Status: ${parentOrder.orderState.status}`);
+                    appLog.info(`Parent Order Status: ${parentOrder?.orderState?.status}`);
 
                     // If parent order is filled, break to monitor child orders
                     if (parentOrder?.orderState?.status === "Filled") {
@@ -655,17 +743,17 @@ function sleep(ms) {
 
 // (async () => {
 //     const marketDataStreamer = new MarketDataStreamer();
-//     await marketDataStreamer.cancelAllOrders();
 //     const openOrders = await marketDataStreamer.getOpenOrders();
-//     appLog.info(JSON.stringify(openOrders));
-//     for (const order of openOrders) {
-//         // const retStatus  = await marketDataStreamer.cancelOrder(order.orderId);
-//         appLog.info(JSON.stringify(order));
-//     }
-//
-//     // const orderResults = await marketDataStreamer.setBracketOrder('DKNG', 1, 40, 41, 38);
-//     // appLog.info(JSON.stringify(orderResults));
-//     // if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
-//     //     await marketDataStreamer.monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId]);
+//     console.log(JSON.stringify(openOrders));
+//     //await marketDataStreamer.cancelAllOrders();
+//     // for (const order of openOrders) {
+//     //     const retStatus  = await marketDataStreamer.cancelOrder(order.orderId);
+//     //     appLog.info(JSON.stringify(order));
 //     // }
+//
+//     const orderResults = await marketDataStreamer.setBracketOrder('AAPL', 1, 259, 300, 258);
+//     console.log(JSON.stringify(orderResults));
+//     if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
+//         await marketDataStreamer.monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId]);
+//     }
 // })();

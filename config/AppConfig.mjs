@@ -23,10 +23,12 @@ export default function appConfig() {
             TrendMomentumBreakoutStrategy: {
                 emaShortPeriod: 9, // used in CMF
                 emaLongPeriod: 21, // used in CMF
-                rsiPeriod: 7,   // used in CMF
+                rsiPeriod: 7,   // not used
+                cmfRsiPeriod: 30,   // used in CMF
                 bollingerRSIPeriod: 10,
                 keltnerAtrPeriod: 30,
                 rvolThreshold: 1.2, // Minimum RVOL for a valid signal
+                rvolHighIndicator: 2.0, // indicator for larger take profit percentage
 
                 macdFastPeriod: 5,
                 macdSlowPeriod: 15,
@@ -34,16 +36,20 @@ export default function appConfig() {
                 minSamplesForMACD: 18, //   macdSlowPeriod + macdSignalPeriod
 
                 keltnerMultiplier: 1.5,
-                cmfPeriod: 20,
+                cmfPeriod: 30,
 
                 takeProfitMultiplier: 1.45, // ATR multiplier for take-profit - WAS 1.5.
                 stopLossMultiplier: 0.75, // ATR multiplier for stop-loss
                 takeProfitMaxPrecent: 0.015, // maximum percent of take profit (1.5%)
-                stopLossMaxPercent: 0.01125, // maximum percent of stop loss (1.25%) => 0.0175
+                takeProfitMaxPrecentForHighRVOL: 0.02, // maximum percent of take profit when rvol>2 (2%)
+                stopLossMaxPercent: 0.015, // maximum percent of stop loss (1.5%)
 
                 lowRsiBearishThreshold: 30, // for short term; long term is 45
                 lowRsiBulishThreshold: 30, // for short term; long term is 60
                 highRsiBulishThreshold: 65, // for short term; long term is 60
+
+                numOfGrennCandlesInARawThreshold: 2, // number of green candles in a row to signal a bullish trend in heikin ashi
+                heikinAshiAggregatedCandles: 3, // number of candles to aggregate in heikin ashi. i.e 3 means each candle is 3 * candleInterval
             },
             TrendMomentumBreakoutStrategySLAdjust: {
                 stopLossMultiplier: 1,// ATR multiplier for stop-loss higher than normal
@@ -53,10 +59,11 @@ export default function appConfig() {
         dataSource: {
             "fetchInterval": 1000, // was 5000
             "testFetchInterval": 5000,
-            "provider": "ibkr",
-            "provider1": "yahoo",
-            "provider2": "alpacaStream",
-            "provider3": "backtesting",
+            "tradingProvider": "alpaca",
+            "marketDataProvider": "ibkr",
+            "marketDataProvider1": "yahoo",
+            "marketDataProvider2": "alpacaStream",
+            "marketDataProvider3": "backtesting",
             "google_sheets" : {
                 "maxSymbols": 40, // was 25
                 "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlm2IYtjYD783Gab4dWTRoerfrdMHrdRASxKT6nM9-oUThj57bPgSZyXNGCcL7KJol9LvxeYSJ0SrC/pub?output=csv"
@@ -67,10 +74,11 @@ export default function appConfig() {
             ibkr: {
                 "candleInterval": 10000,//was 10000
                 "maxSamples": 120, // 20 minutes (120 * 10s)
-                "minSamples": 33,
+                "minSamples": 45,   // 7.5 minutes (45 * 10s)
                 "takeProfitMultipler": 1.45,
                 "account": "DUE737784",
                 "liveAccount": "",
+                "portalGwBaseUrl": "http://127.0.0.1:5001/v1/iserver"
             }
         }
     };

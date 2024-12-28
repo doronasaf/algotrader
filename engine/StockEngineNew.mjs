@@ -1,6 +1,5 @@
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
-// import { sellStock, buyStock, getQuote, setBracketOrdersForBuy, getOpenPositions, getOrders} from "../broker/alpaca/tradeService.mjs";
 import {MarketAnalyzerFactory, TradingStrategy} from "../strategies/MarketAnalyzerFactory.mjs";
 import {fetchMarketData, stopMarketData, setBracketOrdersForBuy, getOrders, monitorBracketOrder} from "../broker/MarketDataFetcher.mjs";
 import {tradingConfig, isWithinTradingHours, timeUntilMarketClose} from "../utils/TradingHours.mjs";
@@ -127,12 +126,12 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                             }
                         }
                         if (breakoutConfirmed === 1) { // buy
-                            const {shares, takeProfit, stopLoss} = selectedAnalyzer.getMargins();
+                            const {shares, takeProfit, stopLoss, risk, reward, riskRewardRatio, isWorthRisk} = selectedAnalyzer.getMargins();
                             position += shares;
                             capital -= shares * close;
                             potentialLoss = (close - stopLoss) * shares;
                             potentialGain = (takeProfit - close) * shares;
-                            if (potentialGain >= appConf.trading.minimumGain) {
+                            if (potentialGain >= appConf.trading.minimumGain && isWorthRisk) {
                                 budgetAllocationSucceeded = await budgetManager.allocateBudget(params.capital);
                                 if (budgetAllocationSucceeded) {
                                     let budgetInfo = await global.budgetManager.getBudgetInfo();
@@ -147,6 +146,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                         stopLoss,
                                         potentialGain: potentialGain,
                                         potentialLoss: potentialLoss,
+                                        riskRewardRatio: riskRewardRatio,
                                         budgetRemaining: budgetInfo.availableBudget,
                                         budgetAllocated: budgetInfo.allocatedBudget,
                                         status: "Live Buy",
@@ -170,7 +170,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                     appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Source: ${params.source} | Required Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient. Quit buying`);
                                 }
                             } else {
-                                appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}`);
+                                appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}, risk: ${risk}, reward: ${reward}, riskRewardRatio: ${riskRewardRatio}, isWorthRisk: ${isWorthRisk}`);
                                 phase = "C"; // Skip execution monitoring
                             }
                         } else if (breakoutConfirmed === 0) {
@@ -189,14 +189,14 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         return;
 
                     case "E": // Execution Monitoring
-                        if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
-                            if (appConf.dataSource.provider === 'ibkr') {
+                        if (appConf.dataSource.provider === 'ibkr') {
+                            if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
                                 appLog.info(`Ticker ${ticker} | IBKR Orders: ${JSON.stringify(orderResults)}`);
                                 const monitoringTime = timeUntilMarketClose();
                                 const pollingInterval = 60000;
                                 const executionResults = await monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId], pollingInterval, monitoringTime);
 
-                                if (executionResults?.parentOrder?.status === "Filled" ) {
+                                if (executionResults?.parentOrder?.status === "Filled") {
                                     executionResults.parentOrder.name = "Parent Order";
                                     tradeOrders.push(executionResults.parentOrder);
                                     const takeProfitOrderResult = executionResults.childOrders.find(order => order.orderId === orderResults.takeProfitOrder.orderId);
@@ -213,19 +213,19 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                     }
                                 }
                                 phase = "C";
-                            } else {
-                                if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
+                            }
+                        } else {
+                            if (order.type === "single" && order.order.status.toLowerCase() === "filled") {
+                                timeoutInterval = regularInterval;
+                                appLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
+                                transactionLog.info(JSON.stringify(order));
+                                phase = "C";
+                            } else if (order.type === "bracket") {
+                                if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
                                     timeoutInterval = regularInterval;
-                                    appLog.info(`Ticker ${ticker} | Single Order Filled: ${JSON.stringify(order)}`);
-                                    transactionLog.info(JSON.stringify(order));
                                     phase = "C";
-                                } else if (order.type === "bracket") {
-                                    if (order.parentOrder.status === "filled" && (order.takeProfitOrder.status === "filled" || order.stopLossOrder.status === "filled")) {
-                                        timeoutInterval = regularInterval;
-                                        phase = "C";
-                                        appLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
-                                        transactionLog.info(JSON.stringify(order));
-                                    }
+                                    appLog.info(`Ticker ${ticker} | Bracket Order Filled: ${JSON.stringify(order)}`);
+                                    transactionLog.info(JSON.stringify(order));
                                 }
                             }
                         }
@@ -318,6 +318,7 @@ const startCLI = () => {
     rl.on("line", async (line) => {
         const [command, ...args] = line.trim().split(" ");
         let budgetInfo, counter = 0;
+        let amount = 0;
 
         switch (command) {
             case "help":
@@ -326,8 +327,9 @@ const startCLI = () => {
               - start [symbol] [strategy]: Start a worker for a specific stock.
               - stop [symbol]: Stop a worker for a specific stock.
               - ls List all active workers.
-              - trx : List all transactions.
-              - orders : List all open orders.
+              - ls-trx : List all transactions.
+              - open-orders : List all open orders.
+              - green-candles [amount]: Set minimum green candles in a row for bullish trend.
               - stop-engine : Gracefully stop the engine and all workers.
               - refresh-stocks : Refresh the list of stock.
               - refresh-ext-stocks : Refresh the list of stock from external source.
@@ -399,7 +401,7 @@ const startCLI = () => {
                     console.log("Usage: add-budget [amount]");
                     break;
                 }
-                const amount = parseFloat(args[0]);
+                amount = parseFloat(args[0]);
                 if (isNaN(amount)) {
                     console.log("Invalid amount.");
                     break;
@@ -436,6 +438,21 @@ const startCLI = () => {
                 const openOrders = await getOrders();
                 console.log("Open Orders:");
                 console.table(openOrders);
+                break;
+
+            case "green-candles":
+                if (!args[0]) {
+                    console.log("Minimum green candles in a row: ", appConf.strategies.TrendMomentumBreakoutStrategy.numOfGrennCandlesInARawThreshold);
+                    console.log("Usage: green-candles [amount]");
+                    break;
+                }
+                amount = parseInt(args[0]);
+                if (isNaN(amount)) {
+                    console.log("Invalid amount.");
+                    break;
+                }
+                appConf.strategies.TrendMomentumBreakoutStrategy.numOfGrennCandlesInARawThreshold = amount;
+                console.log("Minimum green candles in a row set to: ", amount);
                 break;
             default:
                 console.log("Unknown command. Type 'help' for available commands.");

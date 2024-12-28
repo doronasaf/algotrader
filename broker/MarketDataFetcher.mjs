@@ -2,10 +2,13 @@ import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 import { fetchMarketDataFromYahoo } from "./yahoo/quoteService.mjs";
 import { fetchMarketDataFromAlpaca, handleQuoteUpdate } from "./alpaca/quoteService.mjs";
+import { setBracketOrdersForBuyAlpaca, getOrdersAlpaca } from "./alpaca/tradeService.mjs";
 import { fetchMarketDataFromBackTester } from "../backtesting/BackTester.mjs";
 import { MarketDataStreamer } from "../broker/ibkr/quoteService.mjs";
 const appLog = getEntityLogger('appLog');
-const mode = appConfig().dataSource.provider; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
+const appConf = appConfig();
+const MARKET_DATA_PROVIDER = appConf.dataSource.marketDataProvider; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
+const TRADING_PROVIDER = appConf.dataSource.tradingProvider; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
 
 let streamingInitialized = false;
 let marketDataStreamer;// = new MarketDataStreamer(); // Single instance for managing all streaming symbols
@@ -14,7 +17,7 @@ const symbolDataBuffers = new Map(); // Buffer for holding rolling market data f
 export async function fetchMarketData (symbol) {
     let closes, highs, lows, volumes, update;
     let marketData;
-    if (mode === 'ibkr') {
+    if (MARKET_DATA_PROVIDER === 'ibkr') {
         if (!marketDataStreamer) {
             marketDataStreamer = new MarketDataStreamer();
         }
@@ -25,7 +28,7 @@ export async function fetchMarketData (symbol) {
         // Fetch the most recent 5-minute rolling data from the buffer
         const rollingData = symbolDataBuffers.get(symbol);
 
-        if (rollingData?.length >= 25) { // Ensure sufficient data points for analysis
+        if (rollingData?.length >= appConf.dataSource.ibkr.minSamples) { // Ensure sufficient data points for analysis
             closes = rollingData.map(d => d.close);
             highs = rollingData.map(d => d.high);
             lows = rollingData.map(d => d.low);
@@ -37,7 +40,7 @@ export async function fetchMarketData (symbol) {
                 appLog.info(`Insufficient data for ${symbol}. Buffer size: ${rollingData?.length || 0}`);
             }
         }
-    } else if (mode === 'alpacaStream') {
+    } else if (MARKET_DATA_PROVIDER === 'alpacaStream') {
         marketData = await fetchMarketDataFromAlpaca(symbol, handleQuoteUpdate(update)); // Updates the buffer and fetches last 100 data points
         if (marketDataIsValid(marketData)) {
             // Extract OHLC arrays for analysis
@@ -46,7 +49,7 @@ export async function fetchMarketData (symbol) {
             lows = marketData.map(d => d.low);
             volumes = marketData.map(d => d.volume);
         }
-    } else if (mode === 'yahoo') {
+    } else if (MARKET_DATA_PROVIDER === 'yahoo') {
         marketData = await fetchMarketDataFromYahoo(symbol); // yahoo finance
         if (marketDataIsValid(marketData)) {
             closes = marketData.closes;
@@ -54,7 +57,7 @@ export async function fetchMarketData (symbol) {
             lows = marketData.lows;
             volumes = marketData.volumes;
         }
-    } else if (mode === 'backtesting') {
+    } else if (MARKET_DATA_PROVIDER === 'backtesting') {
         marketData = await fetchMarketDataFromBackTester(symbol); // yahoo finance
         if (marketDataIsValid(marketData)) {
             closes = marketData.closes;
@@ -82,7 +85,11 @@ async function initializeStreaming(symbol) {
 // Expose getOrders function
 export async function getOrders() {
     try {
-        return marketDataStreamer.getOpenOrders();
+        if (TRADING_PROVIDER === 'ibkr') {
+            return marketDataStreamer.getOpenOrders();
+        } else if (TRADING_PROVIDER === 'alpaca') {
+            return await getOrdersAlpaca();
+        }
     } catch (error) {
         appLog.info("Error fetching orders:", error.message);
     }
@@ -91,7 +98,11 @@ export async function getOrders() {
 // Expose setBracketOrder function
 export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice) {
     try {
-        return await marketDataStreamer.setBracketOrder(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice);
+        if (TRADING_PROVIDER === 'ibkr') {
+            return await marketDataStreamer.setBracketOrder(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice);
+        } else if (TRADING_PROVIDER === 'alpaca') {
+            return await setBracketOrdersForBuyAlpaca(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice);
+        }
     } catch (error) {
         appLog.info(`Error placing bracket order for ${symbol}:`, error.message);
     }
@@ -99,32 +110,36 @@ export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeP
 
 export async function monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval = 30000, timeout = 3600000){
     try {
-        return await marketDataStreamer.monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval, timeout);
+        if (TRADING_PROVIDER === 'ibkr') {
+            return await marketDataStreamer.monitorBracketOrder(parentOrderId, childOrderIds, pollingInterval, timeout);
+        } else if (TRADING_PROVIDER === 'alpaca') {
+            return;
+        }
     } catch (error) {
         appLog.info(`Error monitoring bracket order for ${parentOrderId}:`, error.message);
     }
 }
 
 export async function stopMarketData (symbol) {
-    if (mode === 'ibkr') {
+    if (MARKET_DATA_PROVIDER === 'ibkr') {
         await marketDataStreamer.removeSymbol(symbol);
         symbolDataBuffers.delete(symbol);
     }
 }
 function marketDataIsValid(marketData) {
     let dataIsValid = true;
-    if (mode === 'alpacaStream') {
+    if (MARKET_DATA_PROVIDER === 'alpacaStream') {
         if (!marketData) {
             appLog.info("No market data available.");
             dataIsValid = false;
         } else if (!marketData?.length) {
             appLog.info("Missing market data length.");
             dataIsValid = false;
-        } else if (marketData?.length < 20) { // Minimum data points for analysis TBD CHANGE WHEN WORKING IN REALTIME ASAF ZZZZZZZ
+        } else if (marketData?.length < appConf.dataSource.ibkr.minSamples) { // Minimum data points for analysis TBD CHANGE WHEN WORKING IN REALTIME ASAF ZZZZZZZ
             appLog.info("Insufficient data for analysis... filling buffer.");
             dataIsValid = false;
         }
-    } else if (mode === 'yahoo') {
+    } else if (MARKET_DATA_PROVIDER === 'yahoo') {
         if (!marketData) {
             appLog.info("No market data available.");
             dataIsValid = false;

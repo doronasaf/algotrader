@@ -4,8 +4,8 @@ import Alpaca from "@alpacahq/alpaca-trade-api";
 
 // Alpaca API configuration
 const alpaca = new Alpaca({
-    keyId: process.env.APCA_API_KEY_ID || 'PKZ830JQTITVYFIM6QEE',
-    secretKey: process.env.APCA_API_SECRET_KEY || '3GoJTGTUuw6a2pnwmudQmZdujLB5lfWw7zFuLjCr',
+    keyId: process.env.APCA_API_KEY_ID || 'PKG9R7WYXGUCCHFH3KPI',
+    secretKey: process.env.APCA_API_SECRET_KEY || 'RIlsleDGAm3ddImZSHyJaj6XTSSsTOOCyXLxWj2M',
     paper: process.env.APCA_PAPER_API || true, // Set to false for live trading
     usePolygon: false,
 });
@@ -20,7 +20,7 @@ const alpaca = new Alpaca({
  * @param limit_price
  * @returns {Promise<{orderStatus: undefined, order: undefined}>}
  */
-export async function buyStock(symbol, quantity, type="market", limit_price) {
+async function buyStock(symbol, quantity, type="market", limit_price) {
     const orderResult = {
         order: undefined,
         orderStatus: undefined
@@ -66,7 +66,7 @@ export async function buyStock(symbol, quantity, type="market", limit_price) {
 }
 
 // Sell stock
-export async function sellStock(symbol, quantity, type="market", limit_price) {
+async function sellStock(symbol, quantity, type="market", limit_price) {
     const orderResult = {
         order: undefined,
         orderStatus: undefined
@@ -110,7 +110,7 @@ export async function sellStock(symbol, quantity, type="market", limit_price) {
 
 }
 
-export async function pollOrderStatus(orderId, interval = 3000) {
+async function pollOrderStatus(orderId, interval = 3000) {
     let order;
     while (true) {
         order = await alpaca.getOrder(orderId);
@@ -161,7 +161,7 @@ export async function pollOrderStatus(orderId, interval = 3000) {
 //     ]
 //   }
 // ]
-export async function getOrders() {
+export async function getOrdersAlpaca() {
     const orderList = [];
     const orders = await alpaca.getOrders({
         status: 'open', // or 'all' for all orders including closed ones
@@ -194,7 +194,7 @@ export async function getOrders() {
 }
 
 // Fetch real-time quote for a stock
-export async function getQuote(symbol) {
+export async function getQuoteAlpaca(symbol) {
 
     try {
         const quote = await alpaca.getLatestQuote(symbol);
@@ -212,7 +212,7 @@ export async function getQuote(symbol) {
     }
 }
 
-export async function getOpenPositions() {
+export async function getOpenPositionsAlpaca() {
     try {
         const positions = await alpaca.getPositions();
         return positions; // Array of open positions
@@ -222,7 +222,7 @@ export async function getOpenPositions() {
     }
 }
 
-export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice ) {
+export async function setBracketOrdersForBuyAlpaca(symbol, quantity, limitPrice, takeProfitPrice, stopLossPrice ) {
     const orderResult = {
         order: undefined,
         orderStatus: undefined
@@ -257,11 +257,3 @@ export async function setBracketOrdersForBuy(symbol, quantity, limitPrice, takeP
 }
 
 
-// module.exports = {
-//     buyStock,
-//     sellStock,
-//     getQuote,
-//     getOpenPositions,
-//     setBracketOrdersForBuy,
-//     getOrders
-// };

@@ -42,3 +42,20 @@ export function timeUntilMarketClose() {
 
     return (endTime - currentTime) * 60 * 1000;
 }
+
+export function timeFromMarketOpenning() {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const utcMinute = now.getUTCMinutes();
+    const currentTime = utcHour * 60 + utcMinute;
+
+    const [startHour, startMinute] = tradingConfig.market.startTime.split(":").map(Number);
+
+    const startTime = startHour * 60 + startMinute;
+
+    return (currentTime - startTime) * 60 * 1000;
+}
+
+export function minutesFromMarketOpenning() {
+    return timeFromMarketOpenning() / 60000;
+}
