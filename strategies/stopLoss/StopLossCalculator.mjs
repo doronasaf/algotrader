@@ -2,7 +2,7 @@
 export class StopLossCalculator {
     constructor(config = {}) {
         this.config = {
-            maxStopLossPercent: 3.5,
+            maxStopLossPercent: 1.5,
             baseAtrFactor: 0.75,
             volumeThreshold: 2.5,
             minRiskRewardRatio: 1.0,

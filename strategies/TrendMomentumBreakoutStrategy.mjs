@@ -556,7 +556,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             takeProfit = Math.min(calculatedTakeProfit, (1+this.takeProfitMaxPrecentForHighRVOL) * entryPrice);
         }
         const stopLossCalculator = new StopLossCalculator({maxStopLossPercent: this.stopLossMaxPercent, baseAtrFactor: this.stopLossMultiplier, volumeThreshold: 2.5});
-        const { stopLossPercent, risk, reward, riskRewardRatio,isWorthRisk} = stopLossCalculator.evaluateTrade({
+        const { stopLoss, risk, reward, riskRewardRatio,isWorthRisk} = stopLossCalculator.evaluateTrade({
             price: entryPrice,
             atr: lastATR,
             heikinAshiScore: this.heikinAshiSignal,
@@ -565,8 +565,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             timeFromOpen: minutesFromMarketOpenning(),  // need to calculate zzz
             volume: this.marketData.volumes,
             takeProfit: takeProfit});
-        let stopLoss = (1-this.stopLossMaxPercent) * entryPrice;
-        analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Stop Loss Percent: ${stopLoss}`);
+        analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Stop Loss: ${stopLoss}`);
 
         if (takeProfit > calculatedTakeProfit) {
             appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Take Profit adjusted from ${calculatedTakeProfit} to ${takeProfit}`);
