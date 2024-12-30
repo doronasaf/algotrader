@@ -1,3 +1,4 @@
+import process from "process";
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 import {MarketAnalyzerFactory, TradingStrategy} from "../strategies/MarketAnalyzerFactory.mjs";
@@ -8,6 +9,7 @@ import {fetchEarnings} from "../stockInfo/StockCalender.mjs";
 import readline from "readline";
 import {TimerLog} from "../utils/TimerLog.mjs";
 import {fetchCSV} from '../stockInfo/GoogleSheetStockSelector.mjs';
+import { convertLogsToCSV } from '../scripts/transactionsLogToCSV.mjs';
 import {nyseTime} from "../utils/TimeFormatting.mjs";
 import {BudgetManager} from "../utils/BudgetManager.jsm.js";
 
@@ -21,7 +23,7 @@ const sentTransactions = []; // Array to store all transactions
 const tradeOrders = [];
 const strategyTypes = Object.values(TradingStrategy);
 let running = true; // Flag to control engine status
-global.budgetManager = new BudgetManager(appConf.trading.budget);
+const budgetManager = new BudgetManager(appConf.trading.budget);
 const defTradingParams = {
     capital: appConf.trading.singleTradeCapital,
     takeProfit: appConf.trading.takeProfit,
@@ -34,15 +36,15 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
     let support = null;
     let resistance = null;
     let phase = "A"; // Start with Accumulation
-    let capital = params.capital; // Initial capital
-    let position = 0; // Number of shares held
+    // let capital = params.capital; // Initial capital
+    // let position = 0; // Number of shares held
     const regularInterval = appConf.app.disableTrading ? appConf.dataSource.testFetchInterval : appConf.dataSource.fetchInterval;//2000;
-    const monitoringInterval = 60000, nextTradeInterval = 1000 * 60 * 30; // 30 minutes
+    const monitoringInterval = 60000; // 30 minutes
     let timeoutInterval = regularInterval;
     const timerLog = new TimerLog();
     const analyzersList = [];
     let selectedAnalyzer;
-    let accumulationAchieved, breakoutConfirmed, potentialGain, potentialLoss, orderResults;
+    let accumulationAchieved, breakoutConfirmed = false, potentialGain, potentialLoss, orderResults;
     let budgetAllocationSucceeded = false;
 
     for (const session in tradingConfig) {
@@ -106,7 +108,6 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         }
                         break;
                     case "B": // Breakout
-                        let breakoutConfirmed = false
                         for (const analyzerItem of analyzersList) {
                             selectedAnalyzer = analyzerItem.analyzer;
                             if (!analyzerItem.accCompleted) {
@@ -127,14 +128,14 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                         }
                         if (breakoutConfirmed === 1) { // buy
                             const {shares, takeProfit, stopLoss, risk, reward, riskRewardRatio, isWorthRisk} = selectedAnalyzer.getMargins();
-                            position += shares;
-                            capital -= shares * close;
+                            // position += shares;
+                            // capital -= shares * close;
                             potentialLoss = (close - stopLoss) * shares;
                             potentialGain = (takeProfit - close) * shares;
                             if (potentialGain >= appConf.trading.minimumGain && isWorthRisk) {
                                 budgetAllocationSucceeded = await budgetManager.allocateBudget(params.capital);
                                 if (budgetAllocationSucceeded) {
-                                    let budgetInfo = await global.budgetManager.getBudgetInfo();
+                                    let budgetInfo = await budgetManager.getBudgetInfo();
                                     let trx = {
                                         ticker,
                                         source: params.source,
@@ -275,7 +276,7 @@ const selectStocks = async (maxNumberOfStocks) => {
 
 /** read from google sheet */
 const readFromExternalSource = async () => {
-    console.log("Refresh from google sheets");
+    // console.log("Refresh from google sheets");
     let stockList = await fetchCSV(appConf.dataSource.google_sheets.url);
     stockList.splice(appConf.dataSource.google_sheets.maxSymbols);
     for (let i = 0; i < stockList.length; i++) {
@@ -283,6 +284,18 @@ const readFromExternalSource = async () => {
         const symbol = stockList[i][0];
         let strategyType = TradingStrategy.TrendMomentumBreakoutStrategy;
         tryRunWorker({symbol, source: "google_sheet"}, strategyType);
+    }
+}
+
+const readFromYahooFinance = async () => {
+    const maxStockToFetch = appConf.stockSelector.maxNumberOfStocks || 0;
+    if (maxStockToFetch > 0) {
+        let stockCandidates = await selectStocks(maxStockToFetch); // Fetch max 10 stocks
+        for (let i = 0; i < stockCandidates.length; i++) {
+            const stockCandidate = stockCandidates[i];
+            let strategyType = strategyTypes[i % strategyTypes.length];
+            tryRunWorker(stockCandidate, strategyType);
+        }
     }
 }
 
@@ -325,13 +338,17 @@ const startCLI = () => {
         input: process.stdin,
         output: process.stdout,
     });
+    let symbol, params;
 
     console.log("Engine CLI started. Type 'help' for available commands.");
 
     rl.on("line", async (line) => {
         const [command, ...args] = line.trim().split(" ");
-        let budgetInfo, counter = 0;
-        let amount = 0;
+        let budgetInfo, worker, runningWorkers, stopSymbol;
+        let stockCandidate, stockCandidates;
+        let amount = 0, counter = 0;
+        let openOrders;
+
 
         switch (command) {
             case "help":
@@ -357,16 +374,16 @@ const startCLI = () => {
                     console.log("Usage: start [symbol]");
                     break;
                 }
-                const symbol = args[0].toUpperCase();
-                checkWorkerLastTrader(symbol);
+                symbol = args[0].toUpperCase();
+                checkWorkerLastTrade(symbol);
                 if (workers.has(symbol)) {
                     console.log(`Worker for ${symbol} is already running.`);
                     break;
                 }
-                const params = {ticker: symbol, type: '', source: "Manual(CLI)", ...defTradingParams}; // Default strategy
+                params = {ticker: symbol, type: '', source: "Manual(CLI)", ...defTradingParams}; // Default strategy
                 workers.set(symbol, {params});
                 stopFlags.set(symbol, false); // Initialize stop flag
-                const worker = createWorker(symbol, params);
+                worker = createWorker(symbol, params);
                 worker(); // Start the worker
                 break;
 
@@ -375,7 +392,7 @@ const startCLI = () => {
                     console.log("Usage: stop [symbol]");
                     break;
                 }
-                const stopSymbol = args[0].toUpperCase();
+                stopSymbol = args[0].toUpperCase();
                 if (workers.has(stopSymbol)) {
                     console.log(`Raising stop flag for ${stopSymbol}`);
                     stopFlags.set(stopSymbol, true); // Raise stop flag
@@ -396,12 +413,11 @@ const startCLI = () => {
 
             case "refresh-stocks":
                 console.log("Refresh stocks");
-                const stockCandidates = await identifyStocks([]); // Fetch max 10 stocks
+                stockCandidates = await identifyStocks([]); // Fetch max 10 stocks
                 for (let i = 0; i < stockCandidates.length; i++) {
-                    const stock = stockCandidates[i];
+                    stockCandidate = stockCandidates[i];
                     let strategyType = strategyTypes[i % strategyTypes.length];
-                    const symbol = stock.symbol;
-                    tryRunWorker(stock, strategyType);
+                    tryRunWorker(stockCandidate, strategyType);
                 }
                 break;
 
@@ -439,8 +455,8 @@ const startCLI = () => {
             case "stop-engine":
                 console.log("Stopping the engine...");
                 running = false;
-                const runningWorkers = workers.keys();
-                for (const worker of runningWorkers) {
+                runningWorkers = workers.keys();
+                for (worker of runningWorkers) {
                     appLog.info(`Stopping worker for ${worker}`);
                     await stopMarketData(worker);
                     stopFlags.set(worker, true);
@@ -448,7 +464,7 @@ const startCLI = () => {
                 rl.close();
                 break;
             case "open-orders":
-                const openOrders = await getOrders();
+                openOrders = await getOrders();
                 console.log("Open Orders:");
                 console.table(openOrders);
                 break;
@@ -477,7 +493,7 @@ function tryRunWorker(stockCandidate, strategyType) {
     const symbol = stockCandidate.symbol;
     checkWorkerLastTrade(symbol);
     if (!workers.has(symbol)) {
-        console.log(`Spawning worker for ${symbol}`);
+        console.log(`Spawning worker for ${symbol} from ${stockCandidate.source}`);
         const params = {ticker: symbol, type: strategyType, source: stockCandidate.source, ...defTradingParams}; // Default parameters
         const worker = createWorker(symbol, params);
         workers.set(symbol, {worker, params});
@@ -491,20 +507,13 @@ function tryRunWorker(stockCandidate, strategyType) {
  */
 
 const engine = async () => {
+    const timeout = 1000 * 60 * 5; // 5 minutes
     try {
-        await readFromExternalSource();
-        const maxStockToFetch = appConf.stockSelector.maxNumberOfStocks || 0;
         while (running) {
-            if (workers.size === 0 && maxStockToFetch > 0) {
-                let stockCandidates = await selectStocks(maxStockToFetch); // Fetch max 10 stocks
-                for (let i = 0; i < stockCandidates.length; i++) {
-                    const stockCandidate = stockCandidates[i];
-                    let strategyType = strategyTypes[i % strategyTypes.length];
-                    const symbol = stockCandidate.symbol;
-                    tryRunWorker(stockCandidate, strategyType);
-                }
-            }
-            await new Promise((resolve) => setTimeout(resolve, 10000)); // Sleep before rechecking
+            convertLogsToCSV();
+            await readFromExternalSource();
+            await readFromYahooFinance();
+            await new Promise((resolve) => setTimeout(resolve, timeout)); // Sleep before rechecking
         }
     } catch (error) {
         console.error("Error in engine:", error.message);

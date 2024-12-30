@@ -40,7 +40,7 @@ function backtestStrategy(data) {
     let losses = 0;
     const trades = [];
 
-    data.forEach((point, i) => {
+    data.forEach((point) => {
         const { close, high, low, volume } = point;
 
         switch (phase) {

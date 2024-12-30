@@ -1,203 +1,218 @@
 import WebSocket from 'ws';
+import process from "process";
 
-// Alpaca API Key and Secret
+const FEED = "iex"; // Can be "sip" (paid) or "iex"
+const WEBSOCKET_URL = `wss://stream.data.alpaca.markets/v2/${FEED}`;
+
+// Alpaca API credentials
 const API_KEY = process.env.ALPACA_API_KEY || 'PKNLI3BZGX8M03HC0VKO';
 const SECRET_KEY = process.env.ALPACA_SECRET_KEY || '3GoJTGTUuw6a2pnwmudQmZdujLB5lfWw7zFuLjCr';
 
-// WebSocket URL for Alpaca's Real-Time Streaming API
-const FEED = "iex"; // Can be "sip" (paid) or "iex"
-const WEBSOCKET_URL = `wss://stream.data.alpaca.markets/v2/${FEED}`; // production url
-// const WEBSOCKET_URL = `wss://stream.data.sandbox.alpaca.markets/v2/${FEED}`; // sandbox url
-
 export let isConnected = false;
+let alpacaWS = null;
 
-// Function to start a WebSocket connection
-export function fetchMarketDataFromAlpaca(ticker, onQuoteUpdate) {
-    const ws = new WebSocket(WEBSOCKET_URL);
+class AlpacaWebSocket {
+    constructor() {
+        this.ws = null;
+        this.tickers = new Set(); // Track subscribed tickers
+        this.ohlcBuffer = new Map(); // Map of OHLC buffers by ticker
+    }
 
-    ws.on('open', () => {
-        console.log('Connected to Alpaca WebSocket');
-        isConnected = true;
+    // Start WebSocket connection
+    connect(onQuoteUpdate) {
+        this.onQuoteUpdate = onQuoteUpdate;
+        if (isConnected) {
+            console.log("WebSocket already connected.");
+            return;
+        }
 
-        // Authenticate the connection
-        ws.send(JSON.stringify({
+        this.ws = new WebSocket(WEBSOCKET_URL);
+
+        this.ws.on('open', () => {
+            console.log("Connected to Alpaca WebSocket");
+            isConnected = true;
+
+            // Authenticate
+            this.authenticate();
+
+            // Resubscribe to all tickers
+            this.resubscribeToTickers();
+
+            this.ws.on('message', (data) => this.handleMessage(data, onQuoteUpdate));
+        });
+
+        this.ws.on('close', () => {
+            console.warn("WebSocket connection closed. Reconnecting...");
+            isConnected = false;
+            setTimeout(() => this.connect(onQuoteUpdate), 1000); // Reconnect after 1 second
+        });
+
+        this.ws.on('error', (error) => {
+            console.error("WebSocket error:", error.message);
+        });
+    }
+
+    authenticate() {
+        this.ws.send(JSON.stringify({
             action: "auth",
             key: API_KEY,
             secret: SECRET_KEY,
         }));
+    }
 
-        // Subscribe to the ticker's trade, quote, and bar data
-        ws.send(JSON.stringify({
+    subscribe(ticker) {
+        if (!isConnected) {
+            console.log("WebSocket not connected. Cannot subscribe.");
+            this.connect(this.onQuoteUpdate);
+        }
+        if (this.tickers.has(ticker)) {
+            console.log(`Already subscribed to ${ticker}`);
+            return;
+        }
+
+        this.tickers.add(ticker);
+        this.ws.send(JSON.stringify({
             action: "subscribe",
-            trades: [ticker], // For latest trades
-            quotes: [ticker], // For live bid/ask updates
-            bars: [ticker],   // For OHLC bars
+            trades: [ticker],
+            quotes: [ticker],
+            bars: [ticker],
         }));
 
-        ws.on('error', (error) => {
-            console.error("WebSocket Error:", error);
-        });
+        if (!this.ohlcBuffer.has(ticker)) {
+            this.ohlcBuffer.set(ticker, new OHLCBuffer(100));
+        }
 
-    });
+        console.log(`Subscribed to ${ticker}`);
+    }
 
-    ws.on('message', (data) => {
+    unsubscribe(ticker) {
+        if (!this.tickers.has(ticker)) {
+            console.log(`Not subscribed to ${ticker}`);
+            return;
+        }
+
+        this.tickers.delete(ticker);
+        this.ws.send(JSON.stringify({
+            action: "unsubscribe",
+            trades: [ticker],
+            quotes: [ticker],
+            bars: [ticker],
+        }));
+
+        this.ohlcBuffer.delete(ticker);
+        console.log(`Unsubscribed from ${ticker}`);
+    }
+
+    resubscribeToTickers() {
+        if (this.tickers.size > 0) {
+            const tickers = Array.from(this.tickers);
+            this.ws.send(JSON.stringify({
+                action: "subscribe",
+                trades: tickers,
+                quotes: tickers,
+                bars: tickers,
+            }));
+            console.log("Resubscribed to tickers:", tickers);
+        }
+    }
+
+    handleMessage(data, onQuoteUpdate) {
         const parsedData = JSON.parse(data);
 
-        // Handle quote, trade, or bar updates
         parsedData.forEach((update) => {
-            if (update.T === "q") { // Quote update
-                console.log(`Quote Update: Bid ${update.bp}, Ask ${update.ap}`);
-                onQuoteUpdate({
-                    type: "quote",
-                    symbol: update.S,
-                    bidPrice: update.bp,
-                    askPrice: update.ap,
-                    bidSize: update.bs,
-                    askSize: update.as,
-                    timestamp: update.t,
-                });
-            } else if (update.T === "t") { // Trade update
-                console.log(`Trade Update: Price ${update.p}, Volume ${update.s}`);
-                onQuoteUpdate({
-                    type: "trade",
-                    symbol: update.S,
-                    price: update.p,
-                    size: update.s,
-                    timestamp: update.t,
-                });
-            } else if (update.T === "b") { // Bar (OHLC) update
-                console.log(`Bar Update: High ${update.h}, Low ${update.l}, Volume ${update.v}`);
-                onQuoteUpdate({
-                    type: "bar",
-                    symbol: update.S,
-                    open: update.o,
-                    high: update.h,
-                    low: update.l,
-                    close: update.c,
-                    volume: update.v,
-                    timestamp: update.t,
-                });
+            const ticker = update.S;
+
+            if (!this.ohlcBuffer.has(ticker)) {
+                console.warn(`Received update for untracked ticker: ${ticker}`);
+                return;
+            }
+
+            const buffer = this.ohlcBuffer.get(ticker);
+            const ohlc = handleQuoteUpdate(update);
+
+            if (ohlc) {
+                buffer.add(ohlc); // Add to buffer
+                onQuoteUpdate(ticker, ohlc); // Notify client
             }
         });
-    });
-
-    ws.on('error', (error) => {
-        console.error("WebSocket Error:", error.message);
-    });
-
-    ws.on('close', () => {
-        console.log("WebSocket connection closed.");
-        isConnected = false;
-
-        // Optionally, reconnect after a delay
-        setTimeout(() => startStreaming(ticker, onQuoteUpdate), 500);
-    });
-
-    return ws;
-}
-
-class OHLCBuffer {
-    constructor(maxSize = 100) {
-        this.data = [];
-        this.maxSize = maxSize;
-    }
-
-    add(ohlc) {
-        if (this.data.length >= this.maxSize) {
-            this.data.shift(); // Remove the oldest data point
-        }
-        this.data.push(ohlc);
-    }
-
-    getAll() {
-        return [...this.data]; // Return a copy of the data
     }
 }
 
-const ohlcBuffer = new OHLCBuffer(100);
-
+// Helper function to process updates
 export function handleQuoteUpdate(update) {
-    if (!update || !update.type) {
-        console.warn("Invalid update received.");
-        return null;
-    }
-
     let ohlc = null;
-
-    switch (update.type) {
-        case "bar":
-            // Use bar data directly
+    let midpoint;
+    switch (update.T) {
+        case "b": // Bar (OHLC) update
             ohlc = {
-                open: update.open,
-                high: update.high,
-                low: update.low,
-                close: update.close,
-                volume: update.volume,
-                timestamp: update.timestamp,
+                open: update.o,
+                high: update.h,
+                low: update.l,
+                close: update.c,
+                volume: update.v,
+                timestamp: update.t,
             };
             break;
 
-        case "trade":
-            // Convert trade data to OHLC-like structure
+        case "t": // Trade update
             ohlc = {
-                open: update.price,
-                high: update.price,
-                low: update.price,
-                close: update.price,
-                volume: update.size || 0,
-                timestamp: update.timestamp,
+                open: update.p,
+                high: update.p,
+                low: update.p,
+                close: update.p,
+                volume: update.s || 0,
+                timestamp: update.t,
             };
             break;
 
-        case "quote":
-            // Convert quote data to OHLC-like structure
-            const midpoint = (update.bidPrice + update.askPrice) / 2;
+        case "q": // Quote update
+            midpoint = (update.bp + update.ap) / 2;
             ohlc = {
                 open: midpoint,
                 high: midpoint,
                 low: midpoint,
                 close: midpoint,
                 volume: 0,
-                timestamp: update.timestamp,
+                timestamp: update.t,
             };
             break;
 
         default:
-            console.warn(`Unknown update type: ${update.type}`);
-            return null;
+            console.warn(`Unknown update type: ${update.T}`);
     }
 
-    if (ohlc) {
-        ohlcBuffer.add(ohlc); // Add the OHLC data to the buffer
-    }
-
-    return ohlcBuffer.getAll(); // Return the last 100 data points
+    return ohlc;
 }
 
-// Example Usage
+// OHLC Buffer Class
+class OHLCBuffer {
+    constructor(maxSize = 120) {
+        this.data = [];
+        this.maxSize = maxSize;
+    }
+
+    add(ohlc) {
+        if (this.data.length >= this.maxSize) {
+            this.data.shift();
+        }
+        this.data.push(ohlc);
+    }
+
+    getAll() {
+        return [...this.data];
+    }
+}
+
+export function fetchMarketDataFromAlpaca(ticker, onQuoteUpdate) {
+    if (!alpacaWS) alpacaWS = new AlpacaWebSocket();
+    alpacaWS.connect(onQuoteUpdate);
+
+    // Subscribe to a ticker
+    alpacaWS.subscribe(ticker);
+}
+
 // (async () => {
-//     const ticker = "AAPL"; // Replace with the desired ticker
-//
-//     // Callback to process quote updates
-//     const handleQuoteUpdate = (update) => {
-//         console.log("Received update:", update);
-//         return update;
-//
-//         // Process the update (e.g., analyze, log, or store it)
-//     };
-//
-//     // Start streaming real-time data
-//     startStreaming(ticker, handleQuoteUpdate);
+//     fetchMarketDataFromAlpaca('AAPL', (ticker, ohlc) => {
+//         console.log(`${ticker}: ${ohlc.close}`);
+//     });
 // })();
-
-// const handleQuoteUpdate = (update) => {
-//         console.log("Received update:", update);
-//         return update;
-//         // Process the update (e.g., analyze, log, or store it)
-// }
-
-// module.exports = {
-//     fetchMarketDataFromAlpaca: startStreaming,
-//     handleQuoteUpdate,
-//     isConnected,
-// }

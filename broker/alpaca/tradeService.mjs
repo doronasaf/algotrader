@@ -1,6 +1,8 @@
 // import 'dotenv/config';
 // require("dotenv").config();
 import Alpaca from "@alpacahq/alpaca-trade-api";
+import process from "process";
+
 
 // Alpaca API configuration
 const alpaca = new Alpaca({
@@ -20,6 +22,7 @@ const alpaca = new Alpaca({
  * @param limit_price
  * @returns {Promise<{orderStatus: undefined, order: undefined}>}
  */
+// eslint-disable-next-line no-unused-vars
 async function buyStock(symbol, quantity, type="market", limit_price) {
     const orderResult = {
         order: undefined,
@@ -66,6 +69,7 @@ async function buyStock(symbol, quantity, type="market", limit_price) {
 }
 
 // Sell stock
+// eslint-disable-next-line no-unused-vars
 async function sellStock(symbol, quantity, type="market", limit_price) {
     const orderResult = {
         order: undefined,
@@ -115,13 +119,9 @@ async function pollOrderStatus(orderId, interval = 3000) {
     while (true) {
         order = await alpaca.getOrder(orderId);
         if (order.status === 'filled') {
-            // console.log(`Order ID: ${orderId} filled at price: ${order.filled_avg_price}`);
             return order;
-            break;
         } else if (order.status === 'canceled') {
-            // console.log(`Order ID: ${orderId} was canceled.`);
             return order;
-            break;
         } else {
             console.log(`Order status: ${order.status}. Waiting for fill...`);
         }

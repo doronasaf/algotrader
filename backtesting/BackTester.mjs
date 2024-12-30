@@ -10,7 +10,7 @@ import readline from 'readline';
 export class MarketDataReader {
     constructor(dataFilePath) {
         this.dataFilePath = dataFilePath;
-        this.watermarkFilePath = path.join(__dirname, 'watermark.json');
+        this.watermarkFilePath = path.join('./', 'watermark.json');
     }
 
     loadWatermark() {
@@ -67,9 +67,9 @@ export class MarketDataReader {
         return records;
     }
 }
-
+// eslint-disable-next-line no-unused-vars
 export const fetchMarketDataFromBackTester = async (symbol) => {
-    const dataFilePath = path.join(__dirname, datasetURL);
+    const dataFilePath = path.join('./', datasetURL);
     const marketDataReader = new MarketDataReader(dataFilePath);
     let data = await marketDataReader.fetchMarketData();
     const marketData = data.reduce((acc, item) => {

@@ -1,4 +1,3 @@
-import appConfig from "../config/AppConfig.mjs";
 import axios from "axios";
 
 export async function fetchCSV(url) {

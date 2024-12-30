@@ -2,6 +2,7 @@
 export class StopLossCalculator {
     constructor(config = {}) {
         this.config = {
+            minStopLossPercent: 0.6,
             maxStopLossPercent: 1.5,
             baseAtrFactor: 0.75,
             volumeThreshold: 2.5,
@@ -17,8 +18,14 @@ export class StopLossCalculator {
                           numGreenCandles,
                           rvol,
                           timeFromOpen,
-                          volume
+                          takeProfit
                       }) {
+
+        const takeProfitPercentage = ((takeProfit - price) / price) * 100;
+        if (takeProfitPercentage <= this.config.minStopLossPercent) {
+            const effectiveSL = Math.max(this.config.minStopLossPercent, takeProfitPercentage);
+            return price * (1 - effectiveSL / 100);
+        }
         // Start with base ATR factor
         let atrFactor = this.config.baseAtrFactor;
 
@@ -35,8 +42,8 @@ export class StopLossCalculator {
         const atrBasedStop = price - (atr * atrFactor);
         const percentageBasedStop = price * (1 - maxStopLossPercent / 100);
 
-        // Take the higher (more conservative) stop loss
-        const finalStopLoss = Math.max(atrBasedStop, percentageBasedStop);
+            // Take the higher (more conservative) stop loss
+        let finalStopLoss = Math.max(atrBasedStop, percentageBasedStop);
 
         // Calculate as percentage for validation
         const stopLossPercentage = ((price - finalStopLoss) / price) * 100;
@@ -44,6 +51,12 @@ export class StopLossCalculator {
         // Ensure we never exceed maximum stop loss percentage
         if (stopLossPercentage > this.config.maxStopLossPercent) {
             return price * (1 - this.config.maxStopLossPercent / 100);
+        }
+
+        const minStopLoss = price * (1 - this.config.minStopLossPercent / 100);
+
+        if (finalStopLoss === price || finalStopLoss < minStopLoss) {
+            finalStopLoss = minStopLoss;
         }
 
         return finalStopLoss;
@@ -56,7 +69,6 @@ export class StopLossCalculator {
                       numGreenCandles,
                       rvol,
                       timeFromOpen,
-                      volume,
                       takeProfit
                   }) {
         const stopLoss = this.calculateStopLoss({
@@ -66,7 +78,7 @@ export class StopLossCalculator {
             numGreenCandles,
             rvol,
             timeFromOpen,
-            volume,
+            takeProfit
         });
 
         // Calculate risk and reward
@@ -75,6 +87,22 @@ export class StopLossCalculator {
 
         // Risk-reward ratio
         const riskRewardRatio = reward / risk;
+
+        // If stop loss is less than minimum, trade is worth the risk
+        // This is a special case where we want to take the trade even if R/R is less than 1
+        // This is because the take profit is very close to the entry price
+        // we use Math.round to avoid floating point errors
+        const stopLossPercentage = Math.round(((price - stopLoss) / price) * 100 *10) / 10;
+        if (stopLossPercentage <= this.config.minStopLossPercent) {
+            return {
+                stopLoss,
+                risk,
+                reward,
+                riskRewardRatio,
+                isWorthRisk: true
+            };
+        }
+
 
         // Evaluate if trade is worth the risk
         const isWorthRisk = riskRewardRatio >= this.config.minRiskRewardRatio;
@@ -119,22 +147,23 @@ export class StopLossCalculator {
 }
 
 // Example usage:
-const calculator = new StopLossCalculator({
-    maxStopLossPercent: 3.5,
-    baseAtrFactor: 1.5,
-    volumeThreshold: 3.0
-});
-
-
-const { stopLoss, risk, reward, riskRewardRatio, isWorthRisk } = calculator.evaluateTrade({
-    price: 20.93,           // Entry price
-    atr: 0.25,             // Current ATR
-    heikinAshiScore: 1,    // Current Heikin Ashi score
-    numGreenCandles: 2,    // Number of consecutive green candles
-    rvol: 2.5,             // Relative volume
-    timeFromOpen: 45,      // Minutes from market open
-    volume: 1000000,       // Current volume
-    takeProfit: 22.50       // Target take profit
-});
-
-console.log(`Price: ${20.93}, Stop loss: ${stopLoss}, Risk: ${risk}, Reward: ${reward}, R/R: ${riskRewardRatio}, Worth risk: ${isWorthRisk}`);
+// const calculator = new StopLossCalculator({
+//     maxStopLossPercent: 1.5,
+//     baseAtrFactor: 1.5,
+//     volumeThreshold: 2.5
+// });
+// //
+//
+// const price = 16.4571;
+// const { stopLoss, risk, reward, riskRewardRatio, isWorthRisk } = calculator.evaluateTrade({
+//     price,           // Entry price
+//     atr: 0.05631590909,             // Current ATR
+//     heikinAshiScore: 1,    // Current Heikin Ashi score
+//     numGreenCandles: 2,    // Number of consecutive green candles
+//     rvol: 2.5,             // Relative volume
+//     timeFromOpen: 3,      // Minutes from market open
+//     volume: 1000000,       // Current volume
+//     takeProfit: 16.54       // Target take profit
+// });
+//
+// console.log(`Price: ${price}, Stop loss: ${stopLoss}, Risk: ${risk}, Reward: ${reward}, R/R: ${riskRewardRatio}, Worth risk: ${isWorthRisk}`);

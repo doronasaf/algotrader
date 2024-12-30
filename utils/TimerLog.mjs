@@ -1,4 +1,5 @@
 import {getEntityLogger} from './logger/loggerManager.mjs';
+import process from 'process';
 const appLogger = getEntityLogger('appLog');
 import appConfig from '../config/AppConfig.mjs';
 const appConf = appConfig();

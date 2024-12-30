@@ -2,7 +2,7 @@
 // const { RSI, MACD, BollingerBands } = require('technicalindicators');
 // const getEntityLogger = require('../utils/logger/loggerManager');
 import { IMarketAnalyzer } from './IMarketAnalyzer.mjs';
-import { RSI, MACD, BollingerBands } from 'technicalindicators';
+import { RSI, MACD } from 'technicalindicators';
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 const logger = getEntityLogger('analytics');
 
@@ -29,7 +29,7 @@ export class CombinedMomentumStrategy extends IMarketAnalyzer {
     // Flat MACD Histogram:
     // Histogram is near zero (< 0.01), indicating no significant momentum.
     // If all conditions are met, the stock is likely in accumulation and ready for a potential breakout.
-    async evaluateAccumulation(params) {
+    async evaluateAccumulation() {
         try {
             const {closes, volumes} = this.marketData;
             const averageVolume = volumes.reduce((sum, vol) => sum + vol, 0) / volumes.length;
@@ -102,7 +102,7 @@ export class CombinedMomentumStrategy extends IMarketAnalyzer {
     // Positive MACD Histogram:
     // Histogram > 0 indicates a bullish trend.
     // If all conditions are met, it confirms a breakout and issues a buy signal.
-    async evaluateBreakout(params) {
+    async evaluateBreakout() {
         let buySignal = 0 ; // 0: hold, 1: buy, -1: move to accumulation
         try {
             const {closes, volumes} = this.marketData;

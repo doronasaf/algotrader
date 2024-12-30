@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 import { parse } from 'json2csv';
 
 // Function to convert log file to CSV
@@ -19,7 +18,7 @@ function logToCSV(inputLogFile, outputCsvFile) {
             try {
                 return JSON.parse(jsonPart);
             } catch (err) {
-                console.error(`Error parsing JSON: ${line}`);
+                console.error(`Error parsing JSON: ${err.message}`);
                 return null;
             }
         }).filter(record => record !== null); // Remove null entries
@@ -37,15 +36,19 @@ function logToCSV(inputLogFile, outputCsvFile) {
     }
 }
 
-// Example usage
-let today = new Date();
-const todayStr = `${today.getDate()}_${today.getMonth()+1}_${today.getFullYear()}`;
-const txfileName = `transactions_${todayStr}.log`;
-let inputLogFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${txfileName}`; // Replace with your input file
-let outputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${txfileName}_output.csv`; // Replace with your desired output file
-logToCSV(inputLogFile, outputCsvFile);
+export function convertLogsToCSV() {
+    let today = new Date();
+    const todayStr = `${today.getDate()}_${today.getMonth()+1}_${today.getFullYear()}`;
+    const txfileName = `transactions_${todayStr}.log`;
+    const txFilePath = `/Users/asafdoron/Documents/dev/algotrader/logs/${txfileName}`; // Replace with your input file
+    const txOutputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${txfileName}_output.csv`; // Replace with your desired output file
+    logToCSV(txFilePath, txOutputCsvFile);
 
-const anafileName = `analytics_${todayStr}.log`;
-inputLogFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${anafileName}`; // Replace with your input file
-outputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${anafileName}_output.csv`; // Replace with your desired output file
-logToCSV(inputLogFile, outputCsvFile);
+    const anafileName = `analytics_${todayStr}.log`;
+    const analyticsFilePath = `/Users/asafdoron/Documents/dev/algotrader/logs/${anafileName}`; // Replace with your input file
+    const analyticsOutputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${anafileName}_output.csv`; // Replace with your desired output file
+    logToCSV(analyticsFilePath, analyticsOutputCsvFile);
+
+    return { transactionsFile: txOutputCsvFile, analyticsFile: analyticsOutputCsvFile };
+}
+// Example usage

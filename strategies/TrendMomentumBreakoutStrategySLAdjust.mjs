@@ -1,5 +1,4 @@
 import { TrendMomentumBreakoutStrategy } from "./TrendMomentumBreakoutStrategy.mjs";
-import appConfig from "../config/AppConfig.mjs";
 
 export class TrendMomentumBreakoutStrategySLAdjust extends TrendMomentumBreakoutStrategy {
     constructor(symbol, marketData, support, resistance, params, appConfig) {

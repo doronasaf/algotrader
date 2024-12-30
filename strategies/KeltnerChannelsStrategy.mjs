@@ -2,7 +2,7 @@
 // const getEntityLogger = require('../utils/logger/loggerManager');
 // const {IMarketAnalyzer} = require("./IMarketAnalyzer");
 
-import {EMA, ATR, RSI, MACD, BollingerBands} from "technicalindicators";
+import {EMA, ATR, RSI, MACD } from "technicalindicators";
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
 const logger = getEntityLogger('analytics');

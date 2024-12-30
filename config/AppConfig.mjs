@@ -1,4 +1,3 @@
-import {TrendMomentumBreakoutStrategy} from "../strategies/TrendMomentumBreakoutStrategy.mjs";
 // modified paramters for Trend Momentum Breakout Strategy
 export default function appConfig() {
     return {
@@ -40,9 +39,10 @@ export default function appConfig() {
 
                 takeProfitMultiplier: 1.45, // ATR multiplier for take-profit - WAS 1.5.
                 stopLossMultiplier: 0.75, // ATR multiplier for stop-loss
-                takeProfitMaxPrecent: 0.015, // maximum percent of take profit (1.5%)
-                takeProfitMaxPrecentForHighRVOL: 0.02, // maximum percent of take profit when rvol>2 (2%)
-                stopLossMaxPercent: 0.015, // maximum percent of stop loss (1.5%)
+                takeProfitMaxPrecent: 1.5, // maximum percent of take profit (1.5%)
+                takeProfitMaxPrecentForHighRVOL: 2, // maximum percent of take profit when rvol>2 (2%)
+                stopLossMaxPercent: 1.5, // maximum percent of stop loss (1.5%)
+                stopLossMinPercent: 0.6, // maximum percent of stop loss (0.6%)
 
                 lowRsiBearishThreshold: 30, // for short term; long term is 45
                 lowRsiBulishThreshold: 30, // for short term; long term is 60
@@ -65,7 +65,7 @@ export default function appConfig() {
             "marketDataProvider2": "alpacaStream",
             "marketDataProvider3": "backtesting",
             "google_sheets" : {
-                "maxSymbols": 40, // was 25
+                "maxSymbols": 50, // was 25
                 "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vRlm2IYtjYD783Gab4dWTRoerfrdMHrdRASxKT6nM9-oUThj57bPgSZyXNGCcL7KJol9LvxeYSJ0SrC/pub?output=csv"
             },
             "yahoo": {

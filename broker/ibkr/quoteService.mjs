@@ -2,7 +2,6 @@ import { Client, Contract } from 'ib-tws-api';
 import axios from 'axios';
 import appConfig from '../../config/AppConfig.mjs';
 import {getEntityLogger} from '../../utils/logger/loggerManager.mjs';
-import {nyseTime} from '../../utils/TimeFormatting.mjs';
 const appLog = getEntityLogger('appLog');
 
 // const candleInterval = appConfig().dataSource.ibkr.candleInterval; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
@@ -691,9 +690,10 @@ export class MarketDataStreamer {
             const monitoredChildren = new Set();
 
             while (monitoredChildren.size < childOrderIds.length) {
+                let orders, childOrders;
                 try {
-                    const orders = await api.getAllOpenOrders();
-                    const childOrders = orders.filter(order => childOrderIds.includes(order.order.orderId));
+                    orders = await this.api.getAllOpenOrders();
+                    childOrders = orders.filter(order => childOrderIds.includes(order.order.orderId));
 
                     childOrders.forEach(childOrder => {
                         appLog.info(`Child Order ${childOrder.order.orderId} Status: ${childOrder?.orderState?.status}`);
