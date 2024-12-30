@@ -19,6 +19,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         this.cmfRsiPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.cmfRsiPeriod || 30;
         this.bollingerRSIPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.bollingerRSIPeriod || 14;
         this.keltnerAtrPeriod = appConfig.strategies.TrendMomentumBreakoutStrategy.keltnerAtrPeriod || 30;
+        this.stopLossAndTakeProfitAtrLength = appConfig.strategies.TrendMomentumBreakoutStrategy.stopLossAndTakeProfitAtrLength || 30;
         this.rvolThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.rvolThreshold || 1.2; // Minimum RVOL for a valid signal
         this.rvolHighIndicator = appConfig.strategies.TrendMomentumBreakoutStrategy.rvolHighIndicator || 1.5; // Minimum RVOL for a valid signal
         this.numOfGrennCandlesInARawThreshold = appConfig.strategies.TrendMomentumBreakoutStrategy.numOfGrennCandlesInARawThreshold || 1;
@@ -89,8 +90,22 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         return RSI.calculate({ values: closes, period: this.rsiPeriod });
     }
 
-    calculateATR(highs, lows, closes, period) {
-        return ATR.calculate({ high: highs, low: lows, close: closes, period });
+    calculateATR(highs, lows, closes, volumes, period, filterZeroVolumes = false) {
+        let noGapsVolumes = [], noGapsLows = [], noGapsHighs = [], noGapsCloses = [];
+        let noGapsPeriod = period;
+        if (filterZeroVolumes) {
+            // Filter out invalid data
+            for (let i = 0; i < volumes.length; i++) {
+                if (volumes[i] > 0 && !isNaN(volumes[i])) {
+                    noGapsVolumes.push(volumes[i]);
+                    noGapsLows.push(lows[i]);
+                    noGapsHighs.push(highs[i]);
+                    noGapsCloses.push(closes[i]);
+                }
+            }
+            noGapsPeriod = Math.min(period, noGapsVolumes.length-1);
+        }
+        return ATR.calculate({ high: noGapsHighs, low: noGapsLows, close: noGapsCloses, period: noGapsPeriod });
     }
 
     calculateVWAP(highs, lows, closes, volumes) {
@@ -157,7 +172,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         });
     }
 
-    calculateKeltnerChannels(highs, lows, closes) {
+    calculateKeltnerChannels(highs, lows, closes, volumes) {
         // Input validation
         if (!Array.isArray(highs) || !Array.isArray(lows) || !Array.isArray(closes)) {
             throw new Error(`Ticker ${this.symbol} Input data must be arrays.`);
@@ -173,7 +188,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const middleLine = EMA.calculate({ values: closes, period: this.keltnerAtrPeriod });
 
         // Calculate ATR
-        const atr = this.calculateATR(highs, lows, closes, this.keltnerAtrPeriod);
+        const atr = this.calculateATR(highs, lows, closes, volumes, this.keltnerAtrPeriod);
 
         // Ensure arrays are aligned
         const minLength = Math.min(middleLine.length, atr.length);
@@ -507,8 +522,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     }
 
     evaluateKeltnerChannels() {
-        const { highs, lows, closes } = this.marketData;
-        const keltner = this.calculateKeltnerChannels(highs, lows, closes);
+        const { highs, lows, closes, volumes } = this.marketData;
+        const keltner = this.calculateKeltnerChannels(highs, lows, closes, volumes);
         const lastClose = closes[closes.length - 1];
         const lastUpper = keltner.upperBand[keltner.upperBand.length - 1];
         const lastLower = keltner.lowerBand[keltner.lowerBand.length - 1];
@@ -539,10 +554,10 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
     calculateStopLossAndTakeProfit() {
         const entryPrice = this.marketData.closes[this.marketData.closes.length - 1];
-        const { highs, lows, closes } = this.marketData;
+        const { highs, lows, closes, volumes } = this.marketData;
         // const stopLossAtrLength = Math.min(this.appConf.dataSource.ibkr.minSamples, closes.length-1);
-        const slTpAtrLength = closes.length-1;
-        const atr = this.calculateATR(highs, lows, closes, slTpAtrLength);
+        const slTpAtrLength = this.stopLossAndTakeProfitAtrLength;
+        const atr = this.calculateATR(highs, lows, closes, volumes, slTpAtrLength, true);
         const lastATR = atr[atr.length - 1];
         const vwap = this.calculateVWAP(highs, lows, closes, this.marketData.volumes);
 
