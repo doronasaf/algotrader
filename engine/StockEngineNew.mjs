@@ -127,12 +127,12 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                             }
                         }
                         if (breakoutConfirmed === 1) { // buy
-                            const {shares, takeProfit, stopLoss, risk, reward, riskRewardRatio, isWorthRisk} = selectedAnalyzer.getMargins();
+                            const {shares, takeProfit, stopLoss} = selectedAnalyzer.getMargins();
                             // position += shares;
                             // capital -= shares * close;
                             potentialLoss = (close - stopLoss) * shares;
                             potentialGain = (takeProfit - close) * shares;
-                            if (potentialGain >= appConf.trading.minimumGain && isWorthRisk) {
+                            if (potentialGain >= appConf.trading.minimumGain) { // TBD Set minimum TP Percentage
                                 budgetAllocationSucceeded = await budgetManager.allocateBudget(params.capital);
                                 if (budgetAllocationSucceeded) {
                                     let budgetInfo = await budgetManager.getBudgetInfo();
@@ -147,7 +147,6 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                         stopLoss,
                                         potentialGain: potentialGain,
                                         potentialLoss: potentialLoss,
-                                        riskRewardRatio: riskRewardRatio,
                                         budgetRemaining: budgetInfo.availableBudget,
                                         budgetAllocated: budgetInfo.allocatedBudget,
                                         status: "Live Buy",
@@ -171,7 +170,7 @@ const analyzeEnhancedStrategy = async (ticker, params) => {
                                     appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Source: ${params.source} | Required Budget: ${params.capital} | Allocated Budget: ${allocatedBudget} | Remaining Budget: ${availableBudget} | Status: Budget Insufficient. Quit buying`);
                                 }
                             } else {
-                                appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}, risk: ${risk}, reward: ${reward}, riskRewardRatio: ${riskRewardRatio}, isWorthRisk: ${isWorthRisk}`);
+                                appLog.info(`Ticker ${ticker} | Strategy: ${selectedAnalyzer.toString()} | Potential gain too low: ${potentialGain}`);
                                 phase = "C"; // Skip execution monitoring
                             }
                         } else if (breakoutConfirmed === 0) {

@@ -26,7 +26,7 @@ export default function appConfig() {
                 cmfRsiPeriod: 30,   // used in CMF
                 bollingerRSIPeriod: 10,
                 keltnerAtrPeriod: 30,
-                stopLossAndTakeProfitAtrLength: 30, // 5 minutes (30 * 10s) otherwise it decreases the stop loss and take profit
+                stopLossAndTakeProfitAtrLength: 20, // 3 minutes and 20 sec (20 * 10s) otherwise it decreases the stop loss and take profit
                 rvolThreshold: 1.2, // Minimum RVOL for a valid signal
                 rvolHighIndicator: 2.0, // indicator for larger take profit percentage
 
@@ -38,8 +38,9 @@ export default function appConfig() {
                 keltnerMultiplier: 1.5,
                 cmfPeriod: 30,
 
-                takeProfitMultiplier: 1.45, // ATR multiplier for take-profit - WAS 1.5.
-                stopLossMultiplier: 0.75, // ATR multiplier for stop-loss
+                takeProfitMultiplier: 1.1, // multiplier for take-profit - WAS 1.5.
+                stopLossMultiplier: 1.1, //  multiplier for stop-loss
+                takeProfitMinPrecent: 0.3, // maximum percent of take profit (1.5%)
                 takeProfitMaxPrecent: 1.5, // maximum percent of take profit (1.5%)
                 takeProfitMaxPrecentForHighRVOL: 2, // maximum percent of take profit when rvol>2 (2%)
                 stopLossMaxPercent: 1.5, // maximum percent of stop loss (1.5%)

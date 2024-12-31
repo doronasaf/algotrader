@@ -2,8 +2,9 @@ import { EMA, RSI, ATR, MACD, BollingerBands } from 'technicalindicators';
 import {IMarketAnalyzer} from "./IMarketAnalyzer.mjs";
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import {nyseTime} from "../utils/TimeFormatting.mjs";
-import {StopLossCalculator} from "./stopLoss/StopLossCalculator.mjs";
-import {minutesFromMarketOpenning} from "../utils/TradingHours.mjs";
+import { TakeProfitStopLossCalculator } from "./stopLoss/TakeProfitStopLossCalculator.mjs";
+// import {StopLossCalculator} from "./stopLoss/StopLossCalculator.mjs";
+// import {minutesFromMarketOpenning} from "../utils/TradingHours.mjs";
 const analyticsLogger = getEntityLogger('analytics');
 const appLogger = getEntityLogger('appLog');
 
@@ -43,9 +44,10 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         // Alpaca: 0.5-1.0
         // IBKR: 0.5-1.0
         this.takeProfitMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.takeProfitMultiplier || 1.45; // ATR multiplier for take-profit - WAS 1.5.
-        this.stopLossMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.stopLossMultiplier || 0.75; // ATR multiplier for stop-loss
-        this.stopLossMultiplierAlt = appConfig.strategies.TrendMomentumBreakoutStrategySLAdjust.stopLossMultiplier || 1; // ATR multiplier for stop-loss
+        this.stopLossMultiplier = appConfig.strategies.TrendMomentumBreakoutStrategy.stopLossMultiplier || 1.1; //  multiplier for stop-loss
+        this.stopLossMultiplierAlt = appConfig.strategies.TrendMomentumBreakoutStrategySLAdjust.stopLossMultiplier || 1.1; // ATR multiplier for stop-loss
 
+        this.takeProfitMinPrecent = appConfig.strategies.TrendMomentumBreakoutStrategy.takeProfitMinPrecent || 0.3 ; // min percent of take profit (0.3%)
         this.takeProfitMaxPrecent = appConfig.strategies.TrendMomentumBreakoutStrategy.takeProfitMaxPrecent || 1.5 ; // maximum percent of take profit (1.5%)
         this.takeProfitMaxPrecentForHighRVOL = appConfig.strategies.TrendMomentumBreakoutStrategy.takeProfitMaxPrecentForHighRVOL || 2 ; // maximum percent of take profit (2%) when rvol>2
         this.stopLossMinPercent = appConfig.strategies.TrendMomentumBreakoutStrategy.stopLossMinPercent || 0.6; // minimum percent of stop loss (0.6%)
@@ -317,6 +319,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const { closes } = this.marketData;
         if (closes.length < this.bollingerRSIPeriod) {
             appLogger.info(`Ticker: ${this.symbol} | Bollinger Bands calculation failed, not enough data`);
+            return -1;
         }
         const bollingerBands = this.calculateBollingerBands(closes);
 
@@ -338,22 +341,22 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
 
         // Evaluate the price relative to the Bollinger Bands
         if (lastClose > upper) {
-            appLogger.info(`Ticker: ${this.symbol} | Bullish: Price broke above the upper band.`);
+            // appLogger.info(`Ticker: ${this.symbol} | Bullish: Price broke above the upper band.`);
             this.bollingerSignalDesc = "Strong Bullish"
             return 1; // Bullish
         } else if (lastClose < lower) {
-            appLogger.info(`Ticker: ${this.symbol} | Bearish: Price broke below the lower band.`);
+            // appLogger.info(`Ticker: ${this.symbol} | Bearish: Price broke below the lower band.`);
             return -1; // Bearish
         } else if (lastClose > middle) {
-            appLogger.info(`Ticker: ${this.symbol} | Slightly Bullish: Price is above the middle band.`);
+            // appLogger.info(`Ticker: ${this.symbol} | Slightly Bullish: Price is above the middle band.`);
             this.bollingerSignalDesc = "Slightly Bullish";
             return 1; // Bullish
         } else if (lastClose < middle) {
-            appLogger.info(`Ticker: ${this.symbol} | Slightly Bearish: Price is below the middle band.`);
+            // appLogger.info(`Ticker: ${this.symbol} | Slightly Bearish: Price is below the middle band.`);
             return -1; // Bearish
         }
 
-        appLogger.info(`Ticker: ${this.symbol} | Neutral: Price is near the middle band.`);
+        // appLogger.info(`Ticker: ${this.symbol} | Neutral: Price is near the middle band.`);
         return 0; // Neutral
     }
 
@@ -391,7 +394,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | API: evaluateCMFStrategy | Error: ${error.message}`);
         }
         if (isBullish) {
-            appLogger.info(`Bullish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
+            // appLogger.info(`Bullish Signal: CMF = ${this.cmf}, EMA Short = ${lastEMAShort}, EMA Long = ${lastEMALong}, RSI = ${this.lastRSI}`);
             return 1; // Buy
         } else if (isBearish) {
             return -1; // Sell
@@ -539,54 +542,68 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
     calculateMargins() {
         let close = this.marketData.closes[this.marketData.closes.length - 1];
         const shares = Math.floor(this.params.capital / close);
-        const { stopLoss, takeProfit, stopLossAlt, risk, reward, riskRewardRatio,isWorthRisk } = this.calculateStopLossAndTakeProfit();
+        const { stopLoss, takeProfit, stopLossAlt, swingHigh, swingLow } = this.calculateStopLossAndTakeProfit();
         this.margins.shares = shares;
         this.margins.close = close;
         this.margins.takeProfit = takeProfit;
         this.margins.stopLoss = stopLoss;
         this.margins.stopLossAlt = stopLossAlt;
-        this.margins.risk = risk;
-        this.margins.reward = reward;
-        this.margins.riskRewardRatio = riskRewardRatio;
-        this.margins.isWorthRisk = isWorthRisk;
+        this.margins.swingHigh = swingHigh;
+        this.margins.swingLow = swingLow;
+        // this.margins.risk = risk;
+        // this.margins.reward = reward;
+        // this.margins.riskRewardRatio = riskRewardRatio;
+        // this.margins.isWorthRisk = isWorthRisk;
         return this.margins;
     }
 
     calculateStopLossAndTakeProfit() {
         const entryPrice = this.marketData.closes[this.marketData.closes.length - 1];
         const { highs, lows, closes, volumes } = this.marketData;
-        // const stopLossAtrLength = Math.min(this.appConf.dataSource.ibkr.minSamples, closes.length-1);
         const slTpAtrLength = this.stopLossAndTakeProfitAtrLength;
         const atr = this.calculateATR(highs, lows, closes, volumes, slTpAtrLength, true);
         const lastATR = atr[atr.length - 1];
         const vwap = this.calculateVWAP(highs, lows, closes, this.marketData.volumes);
 
         const calculatedStopLossAlt = Math.min(entryPrice - this.stopLossMultiplierAlt * lastATR, vwap);
-        const calculatedTakeProfit = entryPrice + this.takeProfitMultiplier * lastATR;
+        const slTPCalculator = new TakeProfitStopLossCalculator({
+            period: this.stopLossAndTakeProfitAtrLength,
+            stopLossMultiplier: this.stopLossMultiplier, // 1.1
+            takeProfitMultiplier: this.takeProfitMultiplier, // 1.1
+            takeProfitMinPrecent: this.takeProfitMinPrecent,
+            takeProfitMaxPrecent: this.takeProfitMaxPrecent,
+            stopLossMaxPercent: this.stopLossMaxPercent,
+            stopLossMinPercent: this.stopLossMinPercent
+        });
 
-        let stopLossAlt = Math.min(calculatedStopLossAlt, (1 - this.stopLossMaxPercentAlt / 100) * entryPrice);
-        let takeProfit;
-        if (this.rvol < this.rvolHighIndicator) {
-            takeProfit = Math.min(calculatedTakeProfit, (1+this.takeProfitMaxPrecent/100) * entryPrice);
-        } else {
-            takeProfit = Math.min(calculatedTakeProfit, (1+this.takeProfitMaxPrecentForHighRVOL/100) * entryPrice);
-        }
-        const stopLossCalculator = new StopLossCalculator({maxStopLossPercent: this.stopLossMaxPercent, baseAtrFactor: this.stopLossMultiplier, volumeThreshold: 2.5, minStopLossPercent: this.stopLossMinPercent});
-        const { stopLoss, risk, reward, riskRewardRatio,isWorthRisk} = stopLossCalculator.evaluateTrade({
-            price: entryPrice,
-            atr: lastATR,
-            heikinAshiScore: this.heikinAshiSignal,
-            numGreenCandles: this.numOfGrennCandlesInARaw,
-            rvol: this.rvol,
-            timeFromOpen: minutesFromMarketOpenning(),
-            takeProfit: takeProfit});
-        analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Stop Loss: ${stopLoss}, SL_ATR: ${lastATR}`);
-        this.slTPAtr = lastATR;
-
-        if (takeProfit > calculatedTakeProfit) {
-            appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Take Profit adjusted from ${calculatedTakeProfit} to ${takeProfit}`);
-        }
-        return { stopLoss: parseFloat(stopLoss.toFixed(2)), takeProfit: parseFloat(takeProfit.toFixed(2)) , stopLossAlt: parseFloat(stopLossAlt.toFixed(2)), risk, reward, riskRewardRatio,isWorthRisk};
+        const { takeProfit, stopLoss, swingHigh, swingLow } = slTPCalculator.calculateTakeProfitAndStopLoss(this.marketData);
+        return { stopLoss, takeProfit, stopLossAlt: calculatedStopLossAlt, swingHigh, swingLow };
+        //
+        // const calculatedTakeProfit = entryPrice + this.takeProfitMultiplier * lastATR;
+        //
+        // let stopLossAlt = Math.min(calculatedStopLossAlt, (1 - this.stopLossMaxPercentAlt / 100) * entryPrice);
+        // let takeProfit;
+        // if (this.rvol < this.rvolHighIndicator) {
+        //     takeProfit = Math.min(calculatedTakeProfit, (1+this.takeProfitMaxPrecent/100) * entryPrice);
+        // } else {
+        //     takeProfit = Math.min(calculatedTakeProfit, (1+this.takeProfitMaxPrecentForHighRVOL/100) * entryPrice);
+        // }
+        // const stopLossCalculator = new StopLossCalculator({maxStopLossPercent: this.stopLossMaxPercent, baseAtrFactor: this.stopLossMultiplier, volumeThreshold: 2.5, minStopLossPercent: this.stopLossMinPercent});
+        // const { stopLoss, risk, reward, riskRewardRatio,isWorthRisk} = stopLossCalculator.evaluateTrade({
+        //     price: entryPrice,
+        //     atr: lastATR,
+        //     heikinAshiScore: this.heikinAshiSignal,
+        //     numGreenCandles: this.numOfGrennCandlesInARaw,
+        //     rvol: this.rvol,
+        //     timeFromOpen: minutesFromMarketOpenning(),
+        //     takeProfit: takeProfit});
+        // analyticsLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Stop Loss: ${stopLoss}, SL_ATR: ${lastATR}`);
+        // this.slTPAtr = lastATR;
+        //
+        // if (takeProfit > calculatedTakeProfit) {
+        //     appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Take Profit adjusted from ${calculatedTakeProfit} to ${takeProfit}`);
+        // }
+        // return { stopLoss: parseFloat(stopLoss.toFixed(2)), takeProfit: parseFloat(takeProfit.toFixed(2)) , stopLossAlt: parseFloat(stopLossAlt.toFixed(2)), risk, reward, riskRewardRatio,isWorthRisk};
     }
 
     async evaluateBreakout() {
@@ -602,16 +619,16 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             const cmfSignal = this.evaluateCMFStrategy();
             const bullingerSignal = this.evaluateBollingerBands();
 
-            const signals = [vwapSignal, macdSignal, keltnerSignal, rvolSignal, this.heikinAshiSignal, cmfSignal, bullingerSignal];
+            const signals = [vwapSignal, macdSignal, keltnerSignal, rvolSignal, bullingerSignal];
             const totalScore = signals.reduce((acc, signal) => acc + signal, 0);
             const close = this.marketData.closes[this.marketData.closes.length - 1];
 
             appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Score: ${totalScore} Target Score: ${signals.length} | Breakdown - VWAP: ${vwapSignal}, MACD: ${macdSignal}, Keltner: ${keltnerSignal}, RVOL: ${rvolSignal}, Heikin-Ashi: ${this.heikinAshiSignal}, CMF: ${cmfSignal}`);
-            if (totalScore >= 4) {
+            if (totalScore >= 2 && cmfSignal === 1 && this.heikinAshiSignal === 1) {
                 this.calculateMargins();
-                let stopLossPercent = this.margins.stopLoss / close;
-                let takeProfitPercent = this.margins.takeProfit / close;
-                let stopLossAltPercent = this.margins.stopLossAlt / close;
+                let stopLossPercent = (1-(this.margins.stopLoss / close)*100);
+                let takeProfitPercent = ((this.margins.takeProfit / close)-1)*100;
+                let stopLossAltPercent = ((this.margins.stopLossAlt / close)-1)*100;
                 let signalAgeInMin = this.marketData.closes.length * this.candleInterval / 1000 / 60;
                 let buySignal = {
                     timestamp: nyseTime(),
@@ -627,7 +644,8 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
                     stopLossAltPercent: stopLossAltPercent,
                     takeProfit: this.margins.takeProfit,
                     takeProfitPercent: takeProfitPercent,
-                    stopLossAtr: this.slTPAtr,
+                    swingHigh: this.margins.swingHigh,
+                    swingLow: this.margins.swingLow,
                     cmf: this.cmf,
                     cmfScore: cmfSignal,
                     emaShortIsBiggerThenLong: this.emaShortIsBiggerThenLong,
