@@ -48,9 +48,9 @@ export class TakeProfitStopLossCalculator {
         const filteredData = this.filterData(data);
 
         // Validate data
-        if (filteredData.length < this.period) {
-            throw new Error("Not enough valid data points after filtering.");
-        }
+        // if (filteredData.length < this.period) {
+        //     throw new Error("Not enough valid data points after filtering.");
+        // }
 
         // Calculate Swing Points
         const swingHigh = this.calculateSwingHigh(filteredData);

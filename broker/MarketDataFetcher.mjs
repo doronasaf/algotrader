@@ -37,7 +37,7 @@ export async function fetchMarketData (symbol) {
             if (!streamingInitialized) {
                 appLog.info(`Streaming initialization is in process for ${symbol}.`);
             } else {
-                appLog.info(`Insufficient data for ${symbol}. Buffer size: ${rollingData?.length || 0}`);
+                // appLog.info(`Insufficient data for ${symbol}. Buffer size: ${rollingData?.length || 0}`);
             }
         }
     } else if (MARKET_DATA_PROVIDER === 'alpacaStream') {
@@ -136,7 +136,7 @@ function marketDataIsValid(marketData) {
             appLog.info("Missing market data length.");
             dataIsValid = false;
         } else if (marketData?.length < appConf.dataSource.ibkr.minSamples) { // Minimum data points for analysis TBD CHANGE WHEN WORKING IN REALTIME ASAF ZZZZZZZ
-            appLog.info("Insufficient data for analysis... filling buffer.");
+            // appLog.info("Insufficient data for analysis... filling buffer.");
             dataIsValid = false;
         }
     } else if (MARKET_DATA_PROVIDER === 'yahoo') {
@@ -148,3 +148,46 @@ function marketDataIsValid(marketData) {
     return dataIsValid;
 }
 
+
+export async function handleOpenOrders(openOrder) {
+    const returnStatus = {
+        symbol: undefined,
+        parentStatus: undefined,     // "new|filled|cancelled",
+        takeProfitStatus: undefined, // "held|filled|cancelled",
+        stopLossStatus: undefined,   // "held|filled|cancelled",
+        tradeStatus: undefined,      // "open|takeProfit|stopLoss"
+    }
+    if (appConf.dataSource.tradingProvider === 'ibkr') {
+        returnStatus.symbol = openOrder?.parentOrder?.symbol;
+        throw new Error ("Not implemented yet");
+        // if (openOrder?.parentOrder && openOrder?.takeProfitOrder && openOrder?.stopLossOrder) {
+        // }
+    } else if (appConf.dataSource.tradingProvider === 'alpaca'){
+        returnStatus.symbol = openOrder?.parentOrder?.symbol;
+        if (openOrder?.parentOrder?.order_class === "bracket") {
+            returnStatus.parentStatus = openOrder.parentOrder.status;
+            if (openOrder.parentOrder.status === "filled") {
+                const takeProfitOrder = openOrder.takeProfitOrder;
+                const stopLossOrder = openOrder.stopLossOrder;
+                returnStatus.takeProfitStatus = takeProfitOrder?.status;
+                returnStatus.stopLossStatus = stopLossOrder?.status;
+                if (takeProfitOrder?.status === "filled") {
+                    returnStatus.tradeStatus = "takeProfit";
+                }
+                else if (stopLossOrder?.status === "filled") {
+                    returnStatus.tradeStatus = "stopLoss";
+                } else {
+                    returnStatus.tradeStatus = "open";
+                }
+            } else {
+                returnStatus.tradeStatus = openOrder.parentOrder.status;
+            }
+        }
+    }
+    return returnStatus;
+}
+
+// (async () => {
+//     const orders = await getOrders();
+//     console.log(JSON.stringify(orders, null, 2));
+// })();

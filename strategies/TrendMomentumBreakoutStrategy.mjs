@@ -66,20 +66,53 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         return EMA.calculate({ values: closes, period });
     }
 
-    calculateRVOL(volumes) {
-        // Calculate the average volume (e.g., for the last 14 periods)
-        const historicalVolume = volumes.slice(0, -1); // Exclude the most recent volume
+    calculateRVOL(volumes, filterZeroVolumes = false, aggregationSize = 1) {
+        if (aggregationSize < 1) {
+            throw new Error("Aggregation size must be at least 1.");
+        }
+
+        // Filter out zero and invalid volumes if requested
+        let validVolumes = volumes;
+        if (filterZeroVolumes) {
+            validVolumes = volumes.filter(vol => vol > 0 && !isNaN(vol));
+        }
+
+        if (validVolumes.length === 0) {
+            throw new Error("No valid volumes available for calculation.");
+        }
+
+        // Aggregate volumes into groups of `aggregationSize`
+        const aggregatedVolumes = [];
+        for (let i = 0; i < validVolumes.length; i += aggregationSize) {
+            const group = validVolumes.slice(i, i + aggregationSize);
+            const groupSum = group.reduce((sum, vol) => sum + vol, 0);
+            aggregatedVolumes.push(groupSum);
+        }
+
+        // Exclude the most recent volume for average calculation
+        const historicalVolume = aggregatedVolumes.slice(0, -1);
+
+        if (historicalVolume.length === 0) {
+            throw new Error("Not enough historical data for calculation after aggregation.");
+        }
+
+        // Calculate the average volume
         const averageVolume = historicalVolume.reduce((sum, vol) => sum + vol, 0) / historicalVolume.length;
 
-        // Calculate the Relative Volume (RVOL) for the most recent period
-        const lastVolume = volumes[volumes.length - 1];
+        // Calculate the Relative Volume (RVOL) for the most recent aggregated period
+        const lastVolume = aggregatedVolumes[aggregatedVolumes.length - 1];
         return lastVolume / averageVolume; // RVOL
     }
 
+
     evaluateRVOL() {
         const { volumes } = this.marketData;
-        this.rvol = this.calculateRVOL(volumes);
-
+        try {
+            this.rvol = this.calculateRVOL(volumes, true, this.heikinAshiAggregatedCandles);
+        } catch (error) {
+            appLogger.info(`TrendMomentumBreakoutStrategy.evaluateRVOL: Ticker: ${this.symbol} | Error: ${error.message}`);
+            return -1; // Neutral
+        }
         if (this.rvol > this.rvolThreshold) {
             return 1; // Strong market participation (Bullish)
         } else if (this.rvol < 1) {
@@ -442,7 +475,7 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         } else if (lastCandleGreen) {
             this.numOfGrennCandlesInARaw = 1 ;
         }
-        if (this.numOfGrennCandlesInARaw >= this.numOfGrennCandlesInARawThreshold) {
+        if (this.numOfGrennCandlesInARaw === this.numOfGrennCandlesInARawThreshold) {
             return 1; // Bullish
         }
         // Check for bearish signal: Red candle with no upper wick and previous two candles are red
@@ -566,8 +599,9 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
         const vwap = this.calculateVWAP(highs, lows, closes, this.marketData.volumes);
 
         const calculatedStopLossAlt = Math.min(entryPrice - this.stopLossMultiplierAlt * lastATR, vwap);
+        const period = this.marketData.closes.length - 1;
         const slTPCalculator = new TakeProfitStopLossCalculator({
-            period: this.stopLossAndTakeProfitAtrLength,
+            period: period, // this.stopLossAndTakeProfitAtrLength,
             stopLossMultiplier: this.stopLossMultiplier, // 1.1
             takeProfitMultiplier: this.takeProfitMultiplier, // 1.1
             takeProfitMinPrecent: this.takeProfitMinPrecent,
@@ -624,11 +658,11 @@ export class TrendMomentumBreakoutStrategy extends IMarketAnalyzer {
             const close = this.marketData.closes[this.marketData.closes.length - 1];
 
             appLogger.info(`Ticker: ${this.symbol} | Strategy: TrendMomentumBreakoutStrategy | Score: ${totalScore} Target Score: ${signals.length} | Breakdown - VWAP: ${vwapSignal}, MACD: ${macdSignal}, Keltner: ${keltnerSignal}, RVOL: ${rvolSignal}, Heikin-Ashi: ${this.heikinAshiSignal}, CMF: ${cmfSignal}`);
-            if (totalScore >= 2 && cmfSignal === 1 && this.heikinAshiSignal === 1) {
+            if (totalScore >= 1 && cmfSignal === 1 && this.heikinAshiSignal === 1 && rvolSignal === 1) {
                 this.calculateMargins();
                 let stopLossPercent = (1-(this.margins.stopLoss / close)*100);
-                let takeProfitPercent = ((this.margins.takeProfit / close)-1)*100;
-                let stopLossAltPercent = ((this.margins.stopLossAlt / close)-1)*100;
+                let takeProfitPercent = (this.margins.takeProfit / close)*100;
+                let stopLossAltPercent = (this.margins.stopLossAlt / close)*100;
                 let signalAgeInMin = this.marketData.closes.length * this.candleInterval / 1000 / 60;
                 let buySignal = {
                     timestamp: nyseTime(),

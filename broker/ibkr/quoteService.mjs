@@ -263,7 +263,7 @@ export class MarketDataStreamer {
                 volume: bar.volume,
             }));
 
-            appLog.info(`Fetched ${ohlcData.length} bars for ${symbol}`);
+            // appLog.info(`Fetched ${ohlcData.length} bars for ${symbol}`);
             return ohlcData;
         } catch (error) {
             appLog.info(`Error fetching OHLC data for ${symbol}:`, error.message);
@@ -299,7 +299,7 @@ export class MarketDataStreamer {
                 throw new Error(`No tick data available for ${symbol}`);
             }
 
-            appLog.info(`Fetched ${tickData.length} ticks for ${symbol}`);
+            // appLog.info(`Fetched ${tickData.length} ticks for ${symbol}`);
 
             // Define the aggregation interval in milliseconds (e.g., 1-minute = 60000 ms)
             const intervalMs = this.parseBarSizeToMilliseconds(barSize);
@@ -338,7 +338,7 @@ export class MarketDataStreamer {
                 ohlcBars.push({ ...currentBar, timestamp: currentBarStartTime });
             }
 
-            appLog.info(`Generated ${ohlcBars.length} OHLC bars for ${symbol}`);
+            // appLog.info(`Generated ${ohlcBars.length} OHLC bars for ${symbol}`);
             return ohlcBars;
         } catch (error) {
             appLog.info(`Error building OHLC for ${symbol}:`, error.message);
@@ -426,7 +426,8 @@ export class MarketDataStreamer {
 
             // Parent order (limit order)
             const parentOrder = {
-                orderId: parentOrderId,
+                // orderId: parentOrderId,
+                cOID: parentOrderId,
                 account: appConfig().dataSource.ibkr.account,
                 action: "BUY",
                 orderType: "LMT",
@@ -434,34 +435,35 @@ export class MarketDataStreamer {
                 lmtPrice: limitPrice,
                 transmit: false, // do not transmit the parent order
             };
+            const retParentOrderId =  await this.api.placeOrder({ contract, order: parentOrder });
+            await sleep(1000); // Wait for the parent order to be placed
 
             // Take-profit order
             const takeProfitOrder = {
-                orderId: takeProfitOrderId,
+                //orderId: takeProfitOrderId, // is not allowed in the api for bracket orders
                 account: appConfig().dataSource.ibkr.account,
                 action: "SELL",
                 orderType: "LMT",
                 totalQuantity: quantity,
                 lmtPrice: takeProfitPrice,
-                parentId: parentOrderId,
+                parentId: retParentOrderId,
                 transmit: false, // Do not transmit yet
             };
 
             // Stop-loss order
             const stopLossOrder = {
-                orderId: stopLossOrderId,
+                //orderId: stopLossOrderId, // is not allowed in the api for bracket orders
                 account: appConfig().dataSource.ibkr.account,
                 action: "SELL",
                 orderType: "STP",
                 totalQuantity: quantity,
                 auxPrice: stopLossPrice, // Stop-loss trigger price
-                parentId: parentOrderId,
+                parentId: retParentOrderId,
                 transmit: true, // Transmit takeProfit and StopLoss orders as a group
             };
 
             // Place orders in sequence
-            const retParentOrderId =  await this.api.placeOrder({ contract, order: parentOrder });
-            await sleep(1000); // Wait for the parent order to be placed
+
             const retTakeProfitId =  await this.api.placeOrder({ contract, order: takeProfitOrder });
             const retStopLossOrderId = await this.api.placeOrder({ contract, order: stopLossOrder });
 
@@ -751,7 +753,7 @@ function sleep(ms) {
 //     //     appLog.info(JSON.stringify(order));
 //     // }
 //
-//     const orderResults = await marketDataStreamer.setBracketOrder('AAPL', 1, 259, 300, 258);
+//     const orderResults = await marketDataStreamer.setBracketOrderDeprecated('AAPL', 1, 259, 300, 258);
 //     console.log(JSON.stringify(orderResults));
 //     if (orderResults?.parentOrder && orderResults?.takeProfitOrder && orderResults?.stopLossOrder) {
 //         await marketDataStreamer.monitorBracketOrder(orderResults.parentOrder.orderId, [orderResults.takeProfitOrder.orderId, orderResults.stopLossOrder.orderId]);

@@ -1,6 +1,6 @@
 // // Example using a publicly available dataset from Kaggle
 // // const datasetURL = 'https://www.kaggle.com/some-user/some-dataset.csv';
-const datasetURL = '../dataset/360ONE_minute.csv';
+const datasetURL = './dataset/360ONE_minute.csv';
 
 
 import fs from 'fs';
@@ -10,7 +10,7 @@ import readline from 'readline';
 export class MarketDataReader {
     constructor(dataFilePath) {
         this.dataFilePath = dataFilePath;
-        this.watermarkFilePath = path.join('./', 'watermark.json');
+        this.watermarkFilePath = path.join('./', 'backtesting/watermark.json');
     }
 
     loadWatermark() {
