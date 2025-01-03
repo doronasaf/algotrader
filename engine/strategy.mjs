@@ -27,7 +27,7 @@ export async function analyzeEnhancedStrategy (ticker, params, budgetManager, st
     let selectedAnalyzer;
     let accumulationAchieved, breakoutConfirmed = false, potentialGain, potentialLoss, orderResults;
     let budgetAllocationSucceeded = false;
-    let performanceTracker, startTracking = false;
+    let performanceTracker;//, startTracking = false;
 
     for (const session in tradingConfig) {
         if (session !== "market") continue;
