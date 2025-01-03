@@ -1,7 +1,3 @@
-// const { createLogger, format, transports } = require('winston');
-// const { combine, timestamp, printf } = format;
-// const path = require('path');
-
 import { createLogger, format, transports } from 'winston';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,8 +8,7 @@ const { combine, printf } = format;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Create a function to generate a logger for an entity
-export default function createEntityLogger(entityName) {
+export default function createEntityLogger(entityName, PLAIN = false) {
     const now = new Date();
     const day = now.getDate();
     const month = now.getMonth() + 1;
@@ -23,6 +18,7 @@ export default function createEntityLogger(entityName) {
     return createLogger({
         level: 'info',
         format: combine(
+            // Custom formatting to add timestamp and preserve PLAIN
             format((info) => {
                 const israelTimeFormatter = new Intl.DateTimeFormat('en-IL', {
                     timeZone: 'Asia/Jerusalem',
@@ -35,9 +31,16 @@ export default function createEntityLogger(entityName) {
                 });
                 const formattedTime = israelTimeFormatter.format(new Date());
                 info.timestamp = formattedTime;
+
+                // Attach the PLAIN flag to the info object
+                info.plain = PLAIN;
                 return info;
             })(),
-            printf(({ level, message, timestamp }) => {
+            // Log output format
+            printf(({ level, message, timestamp, plain }) => {
+                if (plain) {
+                    return `${message}`;
+                }
                 return `${timestamp} [${level.toUpperCase()}]: ${message}`;
             })
         ),
@@ -46,4 +49,3 @@ export default function createEntityLogger(entityName) {
         ],
     });
 }
-// module.exports = createEntityLogger;

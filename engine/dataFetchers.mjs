@@ -38,8 +38,8 @@ export async function checkOpenOrders() {
     }
     return openOrders;
 }
-
-(async () => {
-    const openOrders = await checkOpenOrders();
-    console.log(openOrders);
-})();
+//
+// (async () => {
+//     const openOrders = await checkOpenOrders();
+//     console.log(openOrders);
+// })();

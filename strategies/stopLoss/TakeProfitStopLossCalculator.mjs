@@ -61,8 +61,8 @@ export class TakeProfitStopLossCalculator {
         const stopLoss = swingLow * (100-this.stopLossMultiplier) / 100;
 
         // calaculate the take profit and stop loss percents
-        const takeProfitPercent = (takeProfit - this.entryPrice) / this.entryPrice;
-        const stopLossPercent = (this.entryPrice - stopLoss) / this.entryPrice;
+        const takeProfitPercent = ((takeProfit - this.entryPrice) / this.entryPrice) * 100;
+        const stopLossPercent = ((this.entryPrice - stopLoss) / this.entryPrice) * 100;
 
         let finalTakeProfit = takeProfit , finalStopLoss = stopLoss;
         if (takeProfitPercent > this.takeProfitMaxPrecent) {

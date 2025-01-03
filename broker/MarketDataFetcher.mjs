@@ -9,6 +9,7 @@ const appLog = getEntityLogger('appLog');
 const appConf = appConfig();
 const MARKET_DATA_PROVIDER = appConf.dataSource.marketDataProvider; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
 const TRADING_PROVIDER = appConf.dataSource.tradingProvider; // 'yahoo' or 'alpacaStream' or ibkr or backtesting
+export const MIN_SAMPLES = (MARKET_DATA_PROVIDER === 'ibkr') ? appConf.dataSource.ibkr.minSamples : 40;
 
 let streamingInitialized = false;
 let marketDataStreamer;// = new MarketDataStreamer(); // Single instance for managing all streaming symbols
@@ -79,7 +80,7 @@ async function initializeStreaming(symbol) {
     });
 
     streamingInitialized = true;
-    appLog.info(`Initialized streaming for ${symbol}`);
+    // appLog.info(`Initialized streaming for ${symbol}`);
 }
 
 // Expose getOrders function

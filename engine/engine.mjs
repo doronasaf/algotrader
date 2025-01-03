@@ -1,9 +1,10 @@
 import { startCLI } from './cli.mjs';
 import { tryRunWorker , workers } from './workers.mjs';
-import { convertLogsToCSV } from '../scripts/transactionsLogToCSV.mjs';
 import { readFromExternalSource, readFromYahooFinance, checkOpenOrders } from './dataFetchers.mjs';
 import appConfig from "../config/AppConfig.mjs";
 import { getEntityLogger } from '../utils/logger/loggerManager.mjs';
+import {processAndCombineLogsToCSV} from "../scripts/combineTxAndAnalytics.mjs";
+import {convertLogsToCSV} from "../scripts/transactionsLogToCSV.mjs";
 
 const appLog = getEntityLogger('appLog');
 const appConf = appConfig();
@@ -37,7 +38,6 @@ export async function runEngine() {
 
         // Engine main loop
         while (running) {
-
             const openOrders = await checkOpenOrders();
             openOrders.forEach(symbol => {
                 workers.set(symbol, {worker: undefined, params: {tradeTime: Date.now(), ticker: symbol, source: "Open Orders"}});
@@ -49,10 +49,13 @@ export async function runEngine() {
             for (const stock of stocks) {
                 tryRunWorker(stock.symbol, { ...defTradingParams, source: stock.source });
             }
-            // Convert logs to CSV for reporting
-            convertLogsToCSV();
 
             await new Promise((resolve) => setTimeout(resolve, timeout)); // Sleep for defined timeout
+
+            // Convert logs to CSV for reporting
+            processAndCombineLogsToCSV();
+
+            convertLogsToCSV();
         }
 
         console.log("Engine stopped gracefully.");

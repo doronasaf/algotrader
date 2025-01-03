@@ -10,13 +10,8 @@ function logToCSV(inputLogFile, outputCsvFile) {
 
         // Extract JSON objects and convert to CSV
         const records = lines.map(line => {
-            const jsonPart = line.split('[INFO]:')[1]?.trim();
-            if (!jsonPart) {
-                console.error(`Invalid line skipped: ${line}`);
-                return null;
-            }
             try {
-                return JSON.parse(jsonPart);
+                return JSON.parse(line);
             } catch (err) {
                 console.error(`Error parsing JSON: ${err.message}`);
                 return null;
@@ -37,19 +32,19 @@ function logToCSV(inputLogFile, outputCsvFile) {
 }
 
 export function convertLogsToCSV() {
+
+
     let today = new Date();
     const todayStr = `${today.getDate()}_${today.getMonth()+1}_${today.getFullYear()}`;
-    const txfileName = `transactions_${todayStr}.log`;
-    const txFilePath = `/Users/asafdoron/Documents/dev/algotrader/logs/${txfileName}`; // Replace with your input file
-    const txOutputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${txfileName}_output.csv`; // Replace with your desired output file
-    logToCSV(txFilePath, txOutputCsvFile);
+    const performanceFileName = `performanceLog_${todayStr}.log`;
+    const performanceFilePath = `/Users/asafdoron/Documents/dev/algotrader/logs/${performanceFileName}`; // Replace with your input file
+    const performanceOutputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${performanceFileName}_output.csv`; // Replace with your desired output file
+    logToCSV(performanceFilePath, performanceOutputCsvFile);
 
-    const anafileName = `analytics_${todayStr}.log`;
-    const analyticsFilePath = `/Users/asafdoron/Documents/dev/algotrader/logs/${anafileName}`; // Replace with your input file
-    const analyticsOutputCsvFile = `/Users/asafdoron/Documents/dev/algotrader/logs/${anafileName}_output.csv`; // Replace with your desired output file
-    logToCSV(analyticsFilePath, analyticsOutputCsvFile);
-
-    return { transactionsFile: txOutputCsvFile, analyticsFile: analyticsOutputCsvFile };
+    return { performanceLog: performanceOutputCsvFile };
 }
+
+
+
 // Example usage
-//convertLogsToCSV()
+// convertLogsToCSV()

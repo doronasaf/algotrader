@@ -20,6 +20,12 @@ export class IMarketAnalyzer {
     setMarketData(marketData) {
         this.marketData = marketData;
     }
+    setUniqueID(id) {
+        this.id = id;
+    }
+    getUniqueID() {
+        return this.id;
+    }
 
     async evaluateBreakout() {
         throw new Error('Method evaluateBreakout must be implemented.');

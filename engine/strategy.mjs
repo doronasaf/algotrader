@@ -1,13 +1,14 @@
 import {getEntityLogger} from '../utils/logger/loggerManager.mjs';
 import appConfig from '../config/AppConfig.mjs';
 import {MarketAnalyzerFactory, TradingStrategy} from "../strategies/MarketAnalyzerFactory.mjs";
-import {fetchMarketData, setBracketOrdersForBuy, monitorBracketOrder} from "../broker/MarketDataFetcher.mjs";
+import {StockPerformanceTracker} from "./StockPerformanceTracker.mjs";
+import {fetchMarketData, setBracketOrdersForBuy, monitorBracketOrder, MIN_SAMPLES} from "../broker/MarketDataFetcher.mjs";
 import {tradingConfig, isWithinTradingHours, timeUntilMarketClose} from "../utils/TradingHours.mjs";
 import {TimerLog} from "../utils/TimerLog.mjs";
 import {nyseTime} from "../utils/TimeFormatting.mjs";
 
 const appConf = appConfig();
-const transactionLog = getEntityLogger('transactions');
+const transactionLog = getEntityLogger('transactions', true);
 const appLog = getEntityLogger('appLog');
 
 export const sentTransactions = []; // Array to store all transactions
@@ -26,6 +27,7 @@ export async function analyzeEnhancedStrategy (ticker, params, budgetManager, st
     let selectedAnalyzer;
     let accumulationAchieved, breakoutConfirmed = false, potentialGain, potentialLoss, orderResults;
     let budgetAllocationSucceeded = false;
+    let performanceTracker, startTracking = false;
 
     for (const session in tradingConfig) {
         if (session !== "market") continue;
@@ -40,7 +42,7 @@ export async function analyzeEnhancedStrategy (ticker, params, budgetManager, st
                 }
 
                 let { closes, highs, lows, volumes } = await fetchMarketData(ticker);
-                if (!closes || !highs || !lows || !volumes || closes?.length < 20) {
+                if (!closes || !highs || !lows || !volumes || closes?.length < MIN_SAMPLES) {
                     // appLog.info(`Insufficient data for ${ticker}. Retrying...`);
                     await new Promise((resolve) => setTimeout(resolve, regularInterval));
                     continue;
@@ -115,14 +117,11 @@ export async function analyzeEnhancedStrategy (ticker, params, budgetManager, st
                                 if (budgetAllocationSucceeded) {
                                     let budgetInfo = await budgetManager.getBudgetInfo();
                                     let trx = {
-                                        ticker,
+                                        logId: selectedAnalyzer.getUniqueID(),
+                                        timestamp: nyseTime(),
+                                        symbol: ticker,
                                         source: params.source,
                                         action: "bracket",
-                                        price: close,
-                                        timestamp: nyseTime(),
-                                        shares,
-                                        takeProfit,
-                                        stopLoss,
                                         potentialGain: potentialGain,
                                         potentialLoss: potentialLoss,
                                         budgetRemaining: budgetInfo.availableBudget,
@@ -140,6 +139,10 @@ export async function analyzeEnhancedStrategy (ticker, params, budgetManager, st
                                         params.tradeTime = Date.now();
                                         timeoutInterval = monitoringInterval;
                                         phase = "E"; // Move to Execution Monitoring
+                                        performanceTracker = new StockPerformanceTracker(ticker, close, takeProfit, stopLoss, fetchMarketData, trx.logId, trx.orderResults?.order?.orderId);
+                                        performanceTracker.startTracking().catch((error) => {
+                                            appLog.Info(`Error tracking ${ticker}: ${error.message}`);
+                                        });
                                     }
                                     await writeToLog(ticker, orderResults, tradeOrders, sentTransactions, trx);
                                 } else {
@@ -194,7 +197,13 @@ export async function analyzeEnhancedStrategy (ticker, params, budgetManager, st
                             }
                         } else if (appConf.dataSource.tradingProvider === 'alpaca'){
                             if (orderResults?.order?.order_class === "bracket") {
-                                if (orderResults.orderStatus?.status === "filled") {
+                                if (orderResults?.orderStatus?.status === "filled") {
+                                    // if (!startTracking) {
+                                    //     performanceTracker.startTracking().catch((error) => {
+                                    //         appLog.Info(`Error tracking ${ticker}: ${error.message}`);
+                                    //     });
+                                    //     startTracking = true;
+                                    // }
                                     appLog.info(`Ticker ${ticker} | Bracket Order Limit (Parent) Filled: ${JSON.stringify(orderResults.order)}`);
                                     if (orderResults.orderStatus?.legs) {
                                         const takeProfitOrder = orderResults.orderStatus.legs.find(leg => leg.type === "limit");

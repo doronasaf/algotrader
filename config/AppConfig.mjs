@@ -44,7 +44,7 @@ export default function appConfig() {
 
                 takeProfitMultiplier: 1.1, // multiplier for take-profit - WAS 1.5.
                 stopLossMultiplier: 1.1, //  multiplier for stop-loss
-                takeProfitMinPrecent: 0.33, // maximum percent of take profit (1.5%)
+                takeProfitMinPrecent: 0.4, // maximum percent of take profit (1.5%)
                 takeProfitMaxPrecent: 1.5, // maximum percent of take profit (1.5%)
                 takeProfitMaxPrecentForHighRVOL: 2, // maximum percent of take profit when rvol>2 (2%)
                 stopLossMaxPercent: 1.5, // maximum percent of stop loss (1.5%)
@@ -63,7 +63,7 @@ export default function appConfig() {
             }
         },
         dataSource: {
-            "fetchInterval": 3000, // PROD: 3000 Test: 100
+            "fetchInterval": 2000,               // PROD1: 3000                             PROD2: 2000 Test: 100
             "testFetchInterval": 5000,
             "tradingProvider": "alpaca",
             "marketDataProvider": "ibkr",
@@ -74,9 +74,9 @@ export default function appConfig() {
                 "takeProfitMultipler": 1.45
             },
             ibkr: {
-                "candleInterval": 10000,//was 10000
-                "maxSamples": 120, // 20 minutes (120 * 10s)
-                "minSamples": 45,   // 7.5 minutes (45 * 10s) // PROD: 45 TEST: 5
+                "candleInterval": 10000,        // PROD1: 10000                             PROD2: 2000
+                "maxSamples": 120,              // PROD1: 120 (120 * 10s / 60 = 20min)      PROD2: 600 (600 * 2s / 60 = 20min)
+                "minSamples": 45,               // PROD1: 45 (45 * 10 / 60 = 7.5 minutes)   PROD2: 225 (225 * 2s / 60 = 7.5 minutes)
                 "takeProfitMultipler": 1.45,
                 "account": "DUE737784",
                 "liveAccount": "",

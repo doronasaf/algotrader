@@ -146,7 +146,7 @@ export class MarketDataStreamer {
     // Dynamically add a symbol to be tracked
     async addSymbol(symbol, callback) {
         if (this.aggregators[symbol]) {
-            appLog.info(`Symbol ${symbol} is already being tracked.`);
+            // appLog.info(`Symbol ${symbol} is already being tracked.`);
             return;
         }
 
@@ -175,7 +175,7 @@ export class MarketDataStreamer {
                 this.retrySymbolInitialization(symbol, callback, 5000);
             });
 
-            appLog.info(`Started tracking symbol: ${symbol}`);
+            // appLog.info(`Started tracking symbol: ${symbol}`);
         } catch (error) {
             appLog.info(`Error adding symbol ${symbol}:`, error.message);
             setTimeout(() => this.addSymbol(symbol, callback), 5000);
@@ -184,7 +184,7 @@ export class MarketDataStreamer {
 
     // Retry symbol initialization
     async retrySymbolInitialization(symbol, callback, delayMs) {
-        appLog.info(`Retrying initialization for symbol: ${symbol} after ${delayMs}ms`);
+        // appLog.info(`Retrying initialization for symbol: ${symbol} after ${delayMs}ms`);
         await new Promise((resolve) => setTimeout(resolve, delayMs));
 
         // Ensure the symbol is cleaned up before retrying

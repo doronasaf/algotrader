@@ -12,7 +12,7 @@ const budgetManager = new BudgetManager(appConf.trading.budget);
 function createWorker(symbol, params) {
     return async () => {
         try {
-            appLog.info(`Worker started for ${symbol}`);
+            // appLog.info(`Worker started for ${symbol}`);
             await analyzeEnhancedStrategy(symbol, params, budgetManager, stopFlags);
         } catch (error) {
             appLog.error(`Error in worker for ${symbol}:`, error.message);

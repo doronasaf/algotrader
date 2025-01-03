@@ -3,11 +3,10 @@ import createEntityLogger from './loggerFactory.mjs';
 const loggerCache = {};
 
 // Get or create a logger for the given entity
-export function getEntityLogger (entityName)  {
-    if (!loggerCache[entityName]) {
-        loggerCache[entityName] = createEntityLogger(entityName);
+export function getEntityLogger(entityName, PLAIN = false) {
+    const cacheKey = `${entityName}_${PLAIN}`;
+    if (!loggerCache[cacheKey]) {
+        loggerCache[cacheKey] = createEntityLogger(entityName, PLAIN);
     }
-    return loggerCache[entityName];
+    return loggerCache[cacheKey];
 }
-
-// module.exports = getEntityLogger;

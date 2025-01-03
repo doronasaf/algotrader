@@ -14,7 +14,7 @@ import {nyseTime} from "../utils/TimeFormatting.mjs";
 import {BudgetManager} from "../utils/BudgetManager.mjs";
 
 const appConf = appConfig();
-const transactionLog = getEntityLogger('transactions');
+const transactionLog = getEntityLogger('transactions', true);
 const appLog = getEntityLogger('appLog');
 
 const workers = new Map(); // Map to track workers by stock symbol {symbol: {worker, params}}
